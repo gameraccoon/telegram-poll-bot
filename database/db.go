@@ -223,24 +223,21 @@ func (database *Database) GetReadyUsersChatIds() (users []int64) {
 }
 
 func (database *Database) SetUserReady(userId int64) {
-	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=1 WHERE user_id=%d", userId))
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=1 WHERE id=%d", userId))
 }
 
 func (database *Database) SetUsersUnready(chatIds []int64) {
 	count := len(chatIds)
 	if count > 0 {
 		var buffer bytes.Buffer
-		buffer.WriteString("(")
 		for i, chatId := range(chatIds) {
 			buffer.WriteString(strconv.FormatInt(chatId, 10))
 			if i < count - 1 {
 				buffer.WriteString(",")
-			} else {
-				buffer.WriteString(")")
 			}
 		}
 
-		database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=1 WHERE user_id IN %s", buffer.String()))
+		database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=0 WHERE chat_id IN (%s)", buffer.String()))
 	}
 }
 

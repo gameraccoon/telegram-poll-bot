@@ -104,3 +104,46 @@ func TestCreateQuestion (t *testing.T) {
 	}
 }
 
+func TestReadyUser(t *testing.T) {
+	db := CreateDbAndConnect(t)
+	//defer DropDatabase(testDbPath)
+	if db == nil {
+		t.Fail()
+		return
+	}
+	defer db.Disconnect()
+
+	var userChatId int64 = 12
+	db.GetUserId(userChatId)
+
+	readyUsers := db.GetReadyUsersChatIds()
+	if len(readyUsers) != 1 || readyUsers[0] != userChatId {
+		t.Error("len(readyUsers) != 1 || readyUsers[0] != userChatId")
+		t.Fail()
+	}
+
+	db.SetUsersUnready([]int64{userChatId})
+
+	readyUsers2 := db.GetReadyUsersChatIds()
+	if len(readyUsers2) != 0 {
+		t.Error("len(readyUsers2) != 0")
+		t.Fail()
+	}
+
+	userId2 := db.GetUserId(userChatId)
+
+	readyUsers3 := db.GetReadyUsersChatIds()
+	if len(readyUsers3) != 0 {
+		t.Error("len(readyUsers3) != 0")
+		t.Fail()
+	}
+
+	db.SetUserReady(userId2)
+
+	readyUsers4 := db.GetReadyUsersChatIds()
+	if len(readyUsers4) != 1 || readyUsers4[0] != userChatId {
+		t.Error("len(readyUsers4) != 1 || readyUsers4[0] != userChatId")
+		t.Fail()
+	}
+}
+

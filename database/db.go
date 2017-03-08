@@ -131,8 +131,8 @@ func (database *Database) createUniqueRecord(table string, values string) int64 
 }
 
 func (database *Database) GetUserId(chatId int64) (userId int64) {
-	database.execQuery(fmt.Sprintf("INSERT OR IGNORE INTO users(chat_id) "+
-		"VALUES (%d)", chatId))
+	database.execQuery(fmt.Sprintf("INSERT OR IGNORE INTO users(chat_id, is_ready) "+
+		"VALUES (%d, 1)", chatId))
 
 	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM users WHERE chat_id=%d", chatId))
 	if err != nil {
@@ -158,7 +158,7 @@ func (database *Database) GetUserId(chatId int64) (userId int64) {
 }
 
 func (database *Database) AddQuestion(author int64, text string, time int64, minVotes int64, maxVotes int64) int64 {
-	return database.createUniqueRecord("questions", fmt.Sprintf("%d,'%s',0,%d,%d,%d", author, text, time, minVotes, maxVotes))
+	return database.createUniqueRecord("questions", fmt.Sprintf("NULL,%d,'%s',0,%d,%d,%d", author, text, time, minVotes, maxVotes))
 }
 
 func (database *Database) SetAnswers(questionId int64, answers []string) {
@@ -203,7 +203,7 @@ func (database *Database) ActivateQuestion(questionId int64) {
 }
 
 func (database *Database) GetReadyUsersChatIds() (users []int64) {
-	rows, err := database.conn.Query("SELECT id FROM users WHERE ready=1")
+	rows, err := database.conn.Query("SELECT chat_id FROM users WHERE is_ready=1")
 	if err != nil {
 		log.Fatal(err.Error())
 		return

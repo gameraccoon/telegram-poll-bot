@@ -96,8 +96,10 @@ func TestCreateQuestion (t *testing.T) {
 	readyUsers := db.GetReadyUsersChatIds()
 
 	if len(readyUsers) != 1 {
+		t.Error("len(readyUsers) != 1")
 		t.Fail()
 	} else if readyUsers[0] != 12 {
+		t.Errorf("readyUsers[0] != 12: %d", readyUsers[0])
 		t.Fail()
 	}
 }

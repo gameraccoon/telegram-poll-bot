@@ -2,6 +2,7 @@ package database
 
 import (
 	"testing"
+	"github.com/stretchr/testify/assert"
 	"os"
 )
 
@@ -9,53 +10,54 @@ const (
 	testDbPath = "./testDb.db"
 )
 
-func DropDatabase(fileName string) {
+func dropDatabase(fileName string) {
 	os.Remove(fileName)
 }
 
-func CreateDbAndConnect(t *testing.T) *Database {
-	DropDatabase(testDbPath)
+func clearDb() {
+	dropDatabase(testDbPath)
+}
 
+func connectDb(t *testing.T) *Database {
 	db := &Database{}
 
 	err := db.Connect(testDbPath)
 	if err != nil {
-		t.Error("Problem with creation db connection:" + err.Error())
+		assert.Fail(t, "Problem with creation db connection:" + err.Error())
 		return nil
 	}
 	return db
 }
 
+func createDbAndConnect(t *testing.T) *Database {
+	clearDb()
+	return connectDb(t)
+}
+
 func TestConnection(t *testing.T) {
-	DropDatabase(testDbPath)
+	dropDatabase(testDbPath)
 
 	db := &Database{}
 
-	if db.IsConnectionOpened() {
-		t.Fail()
-	}
+	assert.False(t, db.IsConnectionOpened())
 
 	err := db.Connect(testDbPath)
-		defer DropDatabase(testDbPath)
+	defer dropDatabase(testDbPath)
 	if err != nil {
-		t.Error("Problem with creation db connection:" + err.Error())
+		assert.Fail(t, "Problem with creation db connection:" + err.Error())
 		return
 	}
 
-	if !db.IsConnectionOpened() {
-		t.Fail()
-	}
+	assert.True(t, db.IsConnectionOpened())
 
 	db.Disconnect()
 
-	if db.IsConnectionOpened() {
-		t.Fail()
-	}
+	assert.False(t, db.IsConnectionOpened())
 }
 
 func TestGetUserId(t *testing.T) {
-	db := CreateDbAndConnect(t)
-	defer DropDatabase(testDbPath)
+	db := createDbAndConnect(t)
+	defer clearDb()
 	if db == nil {
 		t.Fail()
 		return
@@ -79,71 +81,168 @@ func TestGetUserId(t *testing.T) {
 }
 
 func TestCreateQuestion (t *testing.T) {
-	db := CreateDbAndConnect(t)
-	defer DropDatabase(testDbPath)
-	if db == nil {
-		t.Fail()
-		return
+	clearDb()
+	defer clearDb()
+
+	var chatId int64 = 12
+	{
+		db := connectDb(t)
+		var userId int64 = db.GetUserId(chatId)
+		db.StartCreatingQuestion(userId, "Test question", 0, 5, 0)
+		db.Disconnect()
 	}
+
+	{
+		db := connectDb(t)
+		var userId int64 = db.GetUserId(chatId)
+		db.CommitQuestion(userId)
+		db.Disconnect()
+	}
+
+	db := connectDb(t)
 	defer db.Disconnect()
-
-	userId := db.GetUserId(12)
-
-	questionId := db.AddQuestion(userId, "Test question", 0, 5, 0)
-
-	db.ActivateQuestion(questionId)
 
 	readyUsers := db.GetReadyUsersChatIds()
 
-	if len(readyUsers) != 1 {
-		t.Error("len(readyUsers) != 1")
-		t.Fail()
-	} else if readyUsers[0] != 12 {
-		t.Errorf("readyUsers[0] != 12: %d", readyUsers[0])
-		t.Fail()
+	assert.Equal(t, 1, len(readyUsers))
+	if len(readyUsers) > 0 {
+		assert.Equal(t, 12, readyUsers[0])
 	}
 }
 
 func TestReadyUser(t *testing.T) {
-	db := CreateDbAndConnect(t)
-	//defer DropDatabase(testDbPath)
+	clearDb()
+	defer clearDb()
+	db := connectDb(t)
 	if db == nil {
 		t.Fail()
 		return
 	}
 	defer db.Disconnect()
 
-	var userChatId int64 = 12
-	db.GetUserId(userChatId)
+	var chatId int64 = 12
+	db.GetUserId(chatId)
 
 	readyUsers := db.GetReadyUsersChatIds()
-	if len(readyUsers) != 1 || readyUsers[0] != userChatId {
-		t.Error("len(readyUsers) != 1 || readyUsers[0] != userChatId")
-		t.Fail()
-	}
+	assert.Equal(t, 1, len(readyUsers))
+	assert.Equal(t, chatId, readyUsers[0])
 
-	db.SetUsersUnready([]int64{userChatId})
+	db.SetUsersUnready([]int64{chatId})
 
 	readyUsers2 := db.GetReadyUsersChatIds()
-	if len(readyUsers2) != 0 {
-		t.Error("len(readyUsers2) != 0")
-		t.Fail()
-	}
+	assert.Equal(t, 0, len(readyUsers2))
 
-	userId2 := db.GetUserId(userChatId)
+	var userId2 int64 = db.GetUserId(chatId)
 
 	readyUsers3 := db.GetReadyUsersChatIds()
-	if len(readyUsers3) != 0 {
-		t.Error("len(readyUsers3) != 0")
-		t.Fail()
-	}
+	assert.Equal(t, 0, len(readyUsers3))
 
 	db.SetUserReady(userId2)
 
 	readyUsers4 := db.GetReadyUsersChatIds()
-	if len(readyUsers4) != 1 || readyUsers4[0] != userChatId {
-		t.Error("len(readyUsers4) != 1 || readyUsers4[0] != userChatId")
-		t.Fail()
+	assert.Equal(t, 1, len(readyUsers4))
+	if len(readyUsers4) > 0 {
+		assert.Equal(t, chatId, readyUsers4[0])
+	}
+	db.StartCreatingQuestion(userId2, "test", 0, 5, 0)
+
+	readyUsers5 := db.GetReadyUsersChatIds()
+	assert.Equal(t, 1, len(readyUsers5))
+	if len(readyUsers5) > 0 {
+		assert.Equal(t, 0, readyUsers5[0])
+	}
+
+	db.CommitQuestion(userId2)
+
+	readyUsers6 := db.GetReadyUsersChatIds()
+	assert.Equal(t, 1, len(readyUsers6))
+	if len(readyUsers6) > 0 {
+		assert.Equal(t, chatId, readyUsers6[0])
+	}
+}
+
+func TestAnswerQuestion(t *testing.T) {
+	clearDb()
+	defer clearDb()
+
+	var chatId1 int64 = 12
+	var chatId2 int64 = 44
+
+	// add users
+	{
+		db := connectDb(t)
+		db.GetUserId(chatId1)
+		db.GetUserId(chatId2)
+		db.Disconnect()
+	}
+
+	// create question1
+	{
+		db := connectDb(t)
+		var userId1 int64 = db.GetUserId(chatId1)
+		db.StartCreatingQuestion(userId1, "Q1", 0, 2, 0)
+		db.SetVariants(userId1, []string{"V1", "V2"})
+		db.CommitQuestion(userId1)
+		db.Disconnect()
+	}
+
+	// answer question1 by user2
+	{
+		db := connectDb(t)
+		var userId2 int64 = db.GetUserId(chatId2)
+		text, variants := db.GetNextQuestionForUser(userId2)
+		assert.Equal(t, "Q1", text)
+		assert.Equal(t, 2, len(variants))
+		if len(variants) > 1 {
+			assert.Equal(t, "V2", variants[1])
+		}
+
+		isNext, isEnded := db.AnswerNextQuestion(userId2, 1)
+
+		assert.False(t, isNext)
+		assert.False(t, isEnded)
+
+		db.Disconnect()
+	}
+
+	// add question2
+	{
+		db := connectDb(t)
+		var userId1 int64 = db.GetUserId(chatId1)
+		db.StartCreatingQuestion(userId1, "Q2", 0, 1, 0)
+		db.SetVariants(userId1, []string{"V3"})
+		db.CommitQuestion(userId1)
+		db.Disconnect()
+	}
+
+	// answer question1 by user1
+	{
+		db := connectDb(t)
+		var userId1 int64 = db.GetUserId(chatId1)
+		text, _ := db.GetNextQuestionForUser(userId1)
+		assert.Equal(t, "Q1", text)
+
+		isNext, isEnded := db.AnswerNextQuestion(userId1, 0)
+		assert.True(t, isNext)
+		assert.True(t, isEnded)
+
+		db.Disconnect()
+	}
+
+	// answer question2 by user1
+	{
+		db := connectDb(t)
+		var userId1 int64 = db.GetUserId(chatId1)
+		text, variants := db.GetNextQuestionForUser(userId1)
+		assert.Equal(t, "Q2", text)
+		if len(variants) > 0 {
+			assert.Equal(t, "V3", variants[0])
+		}
+
+		isNext, isEnded := db.AnswerNextQuestion(userId1, 0)
+
+		assert.False(t, isNext)
+		assert.True(t, isEnded)
 	}
 }
 

@@ -71,13 +71,8 @@ func TestGetUserId(t *testing.T) {
 	id2 := db.GetUserId(chatId1)
 	id3 := db.GetUserId(chatId2)
 
-	if id1 != id2 {
-		t.Fail()
-	}
-
-	if id1 == id3 {
-		t.Fail()
-	}
+	assert.Equal(t, id1, id2)
+	assert.NotEqual(t, id1, id3)
 }
 
 func TestCreateQuestion (t *testing.T) {
@@ -104,10 +99,7 @@ func TestCreateQuestion (t *testing.T) {
 
 	readyUsers := db.GetReadyUsersChatIds()
 
-	assert.Equal(t, 1, len(readyUsers))
-	if len(readyUsers) > 0 {
-		assert.Equal(t, 12, readyUsers[0])
-	}
+	assert.Equal(t, 0, len(readyUsers))
 }
 
 func TestReadyUser(t *testing.T) {
@@ -125,7 +117,9 @@ func TestReadyUser(t *testing.T) {
 
 	readyUsers := db.GetReadyUsersChatIds()
 	assert.Equal(t, 1, len(readyUsers))
-	assert.Equal(t, chatId, readyUsers[0])
+	if len(readyUsers) > 0 {
+		assert.Equal(t, chatId, readyUsers[0])
+	}
 
 	db.SetUsersUnready([]int64{chatId})
 
@@ -144,26 +138,30 @@ func TestReadyUser(t *testing.T) {
 	if len(readyUsers4) > 0 {
 		assert.Equal(t, chatId, readyUsers4[0])
 	}
+
 	db.StartCreatingQuestion(userId2, "test", 0, 5, 0)
+	db.SetVariants(userId2, []string{"v1", "v2"})
 
 	readyUsers5 := db.GetReadyUsersChatIds()
-	assert.Equal(t, 1, len(readyUsers5))
-	if len(readyUsers5) > 0 {
-		assert.Equal(t, 0, readyUsers5[0])
-	}
+	assert.Equal(t, 0, len(readyUsers5))
 
 	db.CommitQuestion(userId2)
 
 	readyUsers6 := db.GetReadyUsersChatIds()
-	assert.Equal(t, 1, len(readyUsers6))
-	if len(readyUsers6) > 0 {
-		assert.Equal(t, chatId, readyUsers6[0])
+	assert.Equal(t, 0, len(readyUsers6))
+
+	db.AnswerNextQuestion(userId2, 0)
+
+	readyUsers7 := db.GetReadyUsersChatIds()
+	assert.Equal(t, 1, len(readyUsers7))
+	if len(readyUsers7) > 0 {
+		assert.Equal(t, chatId, readyUsers7[0])
 	}
 }
 
 func TestAnswerQuestion(t *testing.T) {
 	clearDb()
-	defer clearDb()
+	//defer clearDb()
 
 	var chatId1 int64 = 12
 	var chatId2 int64 = 44

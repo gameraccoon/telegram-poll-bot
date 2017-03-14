@@ -131,7 +131,7 @@ func (database *Database) createUniqueRecord(table string, values string) int64 
 }
 
 func (database *Database) GetUserId(chatId int64) (userId int64) {
-	database.execQuery(fmt.Sprintf("INSERT OR IGNORE INTO users(chat_id, is_ready) "+
+	database.execQuery(fmt.Sprintf("INSERT OR IGNORE INTO users(chat_id, is_ready) " +
 		"VALUES (%d, 1)", chatId))
 
 	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM users WHERE chat_id=%d", chatId))
@@ -162,16 +162,21 @@ func (database *Database) StartCreatingQuestion(author int64, text string, time 
 	database.createUniqueRecord("questions", fmt.Sprintf("NULL,%d,'%s',0,%d,%d,%d", author, text, time, minVotes, maxVotes))
 }
 
-func (database *Database) SetVariants(questionId int64, variants []string) {
+func (database *Database) SetVariants(userId int64, variants []string) {
 	// delete the old variants
-	database.execQuery(fmt.Sprintf("DELETE FROM variants WHERE question_id=%d", questionId))
+
+	database.execQuery(fmt.Sprintf("DELETE FROM variants WHERE question_id IN (" +
+		"SELECT * FROM (" +
+		"SELECT id FROM questions WHERE author=%d AND status=0" +
+		") AS p" +
+		")", userId))
 
 	// add the new ones
 	var buffer bytes.Buffer
 	count := len(variants)
 	if count > 0 {
 		for i, variant := range(variants) {
-			buffer.WriteString(fmt.Sprintf("(%d,'%s',0,%d)", questionId, variant, i))
+			buffer.WriteString(fmt.Sprintf("((SELECT id FROM questions WHERE author=%d),'%s',0,%d)", userId, variant, i))
 			if i < count - 1 {
 				buffer.WriteString(",")
 			}
@@ -182,10 +187,10 @@ func (database *Database) SetVariants(questionId int64, variants []string) {
 	}
 }
 
-func (database *Database) EditQuestionText(questionId int64, text string) {
+func (database *Database) EditQuestionText(userId int64, text string) {
 	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET" +
 		" text='%s'" +
-		" WHERE id=%d", text, questionId))
+		" WHERE author=%d AND status=0", text, userId))
 }
 
 func (database *Database) EditQuestionCloseRules(userId int64, time int64, minVotes int64, maxVotes int64) {
@@ -193,13 +198,13 @@ func (database *Database) EditQuestionCloseRules(userId int64, time int64, minVo
 		" end_time=%d" +
 		",min_votes=%d" +
 		",max_votes=%d" +
-		" WHERE author=%d", time, minVotes, maxVotes, userId))
+		" WHERE author=%d AND status=0", time, minVotes, maxVotes, userId))
 }
 
 func (database *Database) CommitQuestion(userId int64) {
 	// add to pending questions for all users
-	database.conn.Exec(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id) " +
-		"SELECT DISTINCT user_id, %d FROM users;", userId))
+	database.conn.Exec(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id " +
+		" SELECT DISTINCT user_id, %d FROM users;", userId))
 }
 
 func (database *Database) DiscardQuestion(userId int64) {
@@ -250,6 +255,25 @@ func (database *Database) GetNextQuestionForUser(userId int64) (text string, var
 }
 
 func (database *Database) AnswerNextQuestion(userId int64, index int) (hasNextQuestion bool, qusetionIsEnded bool) {
+	database.execQuery(fmt.Sprintf("INSERT INTO answered_questions (user_id, question_id)" +
+		" SELECT %d, q.question_id FROM pending_questions as q" +
+		" WHERE q.user_id=%d" +
+		" LIMIT 1", userId, userId))
+
+	database.execQuery(fmt.Sprintf("DELETE FROM pending_questions WHERE user_id=%d LIMIT 1", userId))
+
+	row := database.conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM pending_questions WHERE user_id=%d", userId))
+
+	var count int64 = 0
+	if row != nil {
+		row.Scan(&count)
+	}
+
+	hasNextQuestion = (count > 0)
+
+	if count == 0 {
+		database.execQuery(fmt.Sprintf("UPDATE users SET is_ready=1 WHERE id=%d", userId))
+	}
 	return
 }
 

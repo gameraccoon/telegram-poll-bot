@@ -3,23 +3,11 @@ package main
 import (
 	"fmt"
 	"log"
-	//	"bytes"
 	"strings"
-	//	"text/template"
 	"io/ioutil"
-	//	"encoding/json"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
+	"github.com/gameraccoon/telegram-poll-bot/database"
 )
-
-type answer struct {
-	text  string
-	votes int32
-}
-
-type question struct {
-	qustion string
-	answers []answer
-}
 
 func getFileStringContent(filePath string) string {
 	fileContent, err := ioutil.ReadFile(filePath)
@@ -34,6 +22,12 @@ func getApiToken() string {
 	return getFileStringContent("./telegramApiToken.txt")
 }
 
+func sendMessage(bot *tgbotapi.BotAPI,chatId int64, message string) {
+	msg := tgbotapi.NewMessage(chatId, message)
+	bot.Send(msg)
+}
+
+
 func main() {
 	var apiToken string = getApiToken()
 
@@ -46,6 +40,14 @@ func main() {
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
+	db := &database.Database{}
+	err = db.Connect("./polls-data.db")
+	defer db.Disconnect()
+
+	if err != nil {
+		log.Fatal("Can't connect database")
+	}
+
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
@@ -55,6 +57,6 @@ func main() {
 		if update.Message == nil {
 			continue
 		}
-		//processUpdate(&update, bot, &players, &staticData, freePlayers)
+		processUpdate(&update, bot, db)
 	}
 }

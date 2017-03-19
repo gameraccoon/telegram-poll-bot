@@ -45,11 +45,11 @@ func (database *Database) Connect(fileName string) error {
 	database.execQuery("CREATE TABLE IF NOT EXISTS" +
 		" questions(id INTEGER NOT NULL PRIMARY KEY" +
 		",author INTEGER" +
-		",text STRING NOT NULL" +
+		",text STRING" +
 		",status INTEGER NOT NULL" + // 0 - editing, 1 - opened, 2 - closed
-		",end_time INTEGER NOT NULL" +
-		",min_votes INTEGER NOT NULL" +
-		",max_votes INTEGER NOT NULL" +
+		",min_votes INTEGER" +
+		",max_votes INTEGER" +
+		",end_time INTEGER" +
 		",FOREIGN KEY(author) REFERENCES users(id) ON DELETE SET NULL" +
 		")")
 
@@ -157,26 +157,212 @@ func (database *Database) GetUserId(chatId int64) (userId int64) {
 	return
 }
 
-func (database *Database) StartCreatingQuestion(author int64, text string, time int64, minVotes int64, maxVotes int64) {
-	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=0 WHERE id=%d", author))
-	database.createUniqueRecord("questions", fmt.Sprintf("NULL,%d,'%s',0,%d,%d,%d", author, text, time, minVotes, maxVotes))
+func (database *Database) GetUserChatId(userId int64) (chatId int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT chat_id FROM users WHERE id=%d", userId))
+	if err != nil {
+		log.Fatal(err.Error())
+		return
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		err := rows.Scan(&chatId)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No user found")
+	}
+
+	return
 }
 
-func (database *Database) SetVariants(userId int64, variants []string) {
-	// delete the old variants
+func (database *Database) GetUserEditingQuestion(userId int64) (questionId int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM questions WHERE status=0 AND author=%d", userId))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
 
-	database.execQuery(fmt.Sprintf("DELETE FROM variants WHERE question_id IN (" +
-		"SELECT * FROM (" +
-		"SELECT id FROM questions WHERE author=%d AND status=0" +
-		") AS p" +
-		")", userId))
+	if rows.Next() {
+		err := rows.Scan(&questionId)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No question found")
+	}
+
+	return
+}
+
+func (database *Database) GetUserNextQuestion(userId int64) int64 {
+	return 0
+}
+
+func (database *Database) IsUserEditingQuestion(userId int64) bool {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT COUNT(*) FROM questions WHERE status=0 AND author=%d", userId))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		count := 0
+		err := rows.Scan(&count)
+		if err != nil {
+			log.Fatal(err.Error())
+			return false
+		}
+
+		if count != 0 {
+			if count != 1 {
+				log.Fatalf("Count should be 0 or 1: %d", count)
+			}
+			return true
+		}
+		return false
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+			return false
+		}
+		log.Fatal("No question found")
+		return false
+	}
+}
+
+func (database *Database) IsUserHasPendingQuestion(userId int64) bool {
+	return false
+}
+
+func (database *Database) GetQuestionText(questionId int64) (text string) {
+	text = ""
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT text FROM questions WHERE id=%d", questionId))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		err := rows.Scan(&text)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No question found")
+	}
+
+	return
+}
+
+func (database *Database) GetQuestionVariants(questionId int64) (variants []string) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT text FROM variants WHERE question_id=%d", questionId))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var variant string
+		err := rows.Scan(&variant)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		variants = append(variants, variant)
+	}
+
+	return
+}
+
+func (database *Database) GetQuestionVariantsCount(questionId int64) (count int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT COUNT(*) FROM variants WHERE question_id=%d", questionId))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		err := rows.Scan(&count)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No question found")
+	}
+
+	return
+}
+
+func (database *Database) GetQuestionRules(questionId int64) (minAnswers int64, maxAnswers int64, endTime int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT min_votes,max_votes,end_time FROM questions WHERE id=%d", questionId))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		err := rows.Scan(&minAnswers, &maxAnswers, &endTime)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No question found")
+	}
+
+	return
+
+}
+
+func (database *Database) GetQuestionAnswers(questionId int64) (answers []int64) {
+	return
+}
+
+func (database *Database) SetQuestionRules(questionId int64, minVotes int64, maxVotes int64, time int64) {
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET" +
+		" min_votes=%d" +
+		",max_votes=%d" +
+		",end_time=%d" +
+		" WHERE id=%d", minVotes, maxVotes, time, questionId))
+}
+
+func (database *Database) SetQuestionText(questionId int64, text string) {
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET" +
+		" text='%s'" +
+		" WHERE id=%d", text, questionId))
+}
+
+func (database *Database) SetQuestionVariants(questionId int64, variants []string) {
+	// delete the old variants
+	database.execQuery(fmt.Sprintf("DELETE FROM variants WHERE question_id=%d",questionId))
 
 	// add the new ones
 	var buffer bytes.Buffer
 	count := len(variants)
 	if count > 0 {
 		for i, variant := range(variants) {
-			buffer.WriteString(fmt.Sprintf("((SELECT id FROM questions WHERE author=%d),'%s',0,%d)", userId, variant, i))
+			buffer.WriteString(fmt.Sprintf("(%d,'%s',0,%d)", questionId, variant, i))
 			if i < count - 1 {
 				buffer.WriteString(",")
 			}
@@ -187,24 +373,77 @@ func (database *Database) SetVariants(userId int64, variants []string) {
 	}
 }
 
-func (database *Database) EditQuestionText(userId int64, text string) {
-	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET" +
-		" text='%s'" +
-		" WHERE author=%d AND status=0", text, userId))
+func (database *Database) AddQuestionAnswer(questionId int64, userId int64, index int) (hasNextQuestion bool, qusetionIsEnded bool) {
+	database.execQuery(fmt.Sprintf("INSERT INTO answered_questions (user_id, question_id)" +
+		" SELECT %d, q.question_id FROM pending_questions as q" +
+		" WHERE q.user_id=%d" +
+		" LIMIT 1", userId, userId))
+
+	database.execQuery(fmt.Sprintf("DELETE FROM pending_questions WHERE user_id=%d LIMIT 1", userId))
+
+	row := database.conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM pending_questions WHERE user_id=%d", userId))
+
+	var count int64 = 0
+	if row != nil {
+		row.Scan(&count)
+	}
+
+	hasNextQuestion = (count > 0)
+
+	if count == 0 {
+		database.execQuery(fmt.Sprintf("UPDATE users SET is_ready=1 WHERE id=%d", userId))
+	}
+	return
 }
 
-func (database *Database) EditQuestionCloseRules(userId int64, time int64, minVotes int64, maxVotes int64) {
-	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET" +
-		" end_time=%d" +
-		",min_votes=%d" +
-		",max_votes=%d" +
-		" WHERE author=%d AND status=0", time, minVotes, maxVotes, userId))
+func (database *Database) RemoveUserPendingQuestion(userId int64, questionId int64) {
 }
 
-func (database *Database) CommitQuestion(userId int64) {
-	// add to pending questions for all users
-	database.conn.Exec(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id " +
-		" SELECT DISTINCT user_id, %d FROM users;", userId))
+func (database *Database) GetQuestionRespondents(questionId int64) {
+}
+
+func (database *Database) StartCreatingQuestion(author int64) {
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=0 WHERE id=%d", author))
+	database.createUniqueRecord("questions", fmt.Sprintf("NULL,%d,NULL,0,NULL,NULL,NULL", author))
+}
+
+func (database *Database) IsQuestionReady(questionId int64) (isReady bool) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT COUNT(*) FROM questions WHERE id=%d AND text NOT NULL AND end_time NOT NULL AND min_votes NOT NULL AND max_votes NOT NULL", questionId))
+	if err != nil {
+		log.Fatal(err.Error())
+		return
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		var count int64
+		err := rows.Scan(&count)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+
+		if count != 0 {
+			isReady = true
+
+			if count != 1 {
+				log.Fatalf("Count should be 0 or 1: %d", count)
+			}
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No row found")
+	}
+
+
+
+	return
+}
+
+func (database *Database) CommitQuestion(questionId int64) {
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET status=1 WHERE id=%d", questionId))
 }
 
 func (database *Database) DiscardQuestion(userId int64) {
@@ -250,33 +489,3 @@ func (database *Database) SetUsersUnready(chatIds []int64) {
 	}
 }
 
-func (database *Database) GetNextQuestionForUser(userId int64) (text string, variants []string) {
-	return
-}
-
-func (database *Database) AnswerNextQuestion(userId int64, index int) (hasNextQuestion bool, qusetionIsEnded bool) {
-	database.execQuery(fmt.Sprintf("INSERT INTO answered_questions (user_id, question_id)" +
-		" SELECT %d, q.question_id FROM pending_questions as q" +
-		" WHERE q.user_id=%d" +
-		" LIMIT 1", userId, userId))
-
-	database.execQuery(fmt.Sprintf("DELETE FROM pending_questions WHERE user_id=%d LIMIT 1", userId))
-
-	row := database.conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM pending_questions WHERE user_id=%d", userId))
-
-	var count int64 = 0
-	if row != nil {
-		row.Scan(&count)
-	}
-
-	hasNextQuestion = (count > 0)
-
-	if count == 0 {
-		database.execQuery(fmt.Sprintf("UPDATE users SET is_ready=1 WHERE id=%d", userId))
-	}
-	return
-}
-
-func (database *Database) GetQuestionResults() {
-
-}

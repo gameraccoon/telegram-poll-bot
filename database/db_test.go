@@ -76,11 +76,54 @@ func TestGetUserId(t *testing.T) {
 
 	assert.Equal(id1, id2)
 	assert.NotEqual(id1, id3)
+
+	assert.Equal(chatId1, db.GetUserChatId(id1))
+	assert.Equal(chatId2, db.GetUserChatId(id3))
+}
+
+func TestUserReady(t *testing.T) {
+	assert := require.New(t)
+	db := createDbAndConnect(t)
+	defer clearDb()
+	if db == nil {
+		t.Fail()
+		return
+	}
+	defer db.Disconnect()
+
+	var chatId int64 = 3221
+	userId := db.GetUserId(chatId)
+
+	{
+		readyUsers := db.GetReadyUsersChatIds()
+		assert.Equal(1, len(readyUsers))
+		if len(readyUsers) > 0 {
+			assert.Equal(chatId, readyUsers[0])
+		}
+	}
+
+	db.UnmarkUserReady(userId)
+
+	{
+		readyUsers := db.GetReadyUsersChatIds()
+		assert.Equal(0, len(readyUsers))
+	}
+
+	db.MarkUserReady(userId)
+
+	{
+		readyUsers := db.GetReadyUsersChatIds()
+		assert.Equal(1, len(readyUsers))
+		if len(readyUsers) > 0 {
+			assert.Equal(chatId, readyUsers[0])
+		}
+	}
 }
 
 func TestCreateQuestion(t *testing.T) {
 	assert := require.New(t)
-	//clearDb()
+	clearDb()
+	defer clearDb()
 
 	var chatId int64 = 13
 
@@ -158,6 +201,95 @@ func TestCreateQuestion(t *testing.T) {
 
 		assert.False(db.IsUserEditingQuestion(userId))
 
+		db.Disconnect()
+	}
+}
+
+func TestDiscardQustion(t *testing.T) {
+	assert := require.New(t)
+	clearDb()
+	defer clearDb()
+
+	var chatId int64 = 13
+
+	{
+		db := connectDb(t)
+		userId := db.GetUserId(chatId)
+		db.StartCreatingQuestion(userId)
+
+		assert.True(db.IsUserEditingQuestion(userId))
+
+		db.Disconnect()
+	}
+
+	{
+		db := connectDb(t)
+		userId := db.GetUserId(chatId)
+		questionId := db.GetUserEditingQuestion(userId)
+
+		db.DiscardQuestion(questionId)
+
+		assert.False(db.IsUserEditingQuestion(userId))
+		db.Disconnect()
+	}
+}
+
+func TestAnswerQuestion(t *testing.T) {
+	assert := require.New(t)
+	clearDb()
+	//defer clearDb()
+
+	var chatId1 int64 = 13
+	var chatId2 int64 = 95
+	var chatId3 int64 = 45
+
+	{
+		db := connectDb(t)
+		userId1 := db.GetUserId(chatId1)
+		userId2 := db.GetUserId(chatId2)
+		userId3 := db.GetUserId(chatId3)
+		db.StartCreatingQuestion(userId1)
+		db.UnmarkUserReady(userId1)
+		questionId := db.GetUserEditingQuestion(userId1)
+		db.SetQuestionText(questionId, "text")
+		db.SetQuestionVariants(questionId, []string{"v1", "v2"})
+		db.SetQuestionRules(questionId, 0, 2, 0)
+		db.CommitQuestion(questionId)
+
+		assert.True(db.IsUserHasPendingQuestions(userId1))
+		assert.True(db.IsUserHasPendingQuestions(userId2))
+		assert.True(db.IsUserHasPendingQuestions(userId3))
+
+		db.Disconnect()
+	}
+
+	{
+		db := connectDb(t)
+		userId1 := db.GetUserId(chatId1)
+
+		assert.True(db.IsUserHasPendingQuestions(userId1))
+
+		questionId := db.GetUserNextQuestion(userId1)
+		db.AddQuestionAnswer(questionId, userId1, 0)
+		db.Disconnect()
+	}
+
+	{
+		db := connectDb(t)
+		userId2 := db.GetUserId(chatId2)
+
+		assert.True(db.IsUserHasPendingQuestions(userId2))
+
+		questionId := db.GetUserNextQuestion(userId2)
+		db.AddQuestionAnswer(questionId, userId2, 1)
+		db.EndQuestion(questionId)
+		users := db.GetUsersAnsweringQuestionNow(questionId)
+		for _, user := range(users) {
+			db.RemoveUserPendingQuestion(user, questionId)
+			if !db.IsUserHasPendingQuestions(user) {
+				db.MarkUserReady(user)
+			}
+		}
 		db.Disconnect()
 	}
 }

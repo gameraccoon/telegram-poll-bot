@@ -241,8 +241,31 @@ func (database *Database) IsUserEditingQuestion(userId int64) bool {
 	}
 }
 
-func (database *Database) IsUserHasPendingQuestion(userId int64) bool {
-	return false
+func (database *Database) IsUserHasPendingQuestions(userId int64) bool {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT COUNT(*) FROM pending_questions WHERE user_id=%d", userId))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		count := 0
+		err := rows.Scan(&count)
+		if err != nil {
+			log.Fatal(err.Error())
+			return false
+		}
+
+		return (count > 0)
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+			return false
+		}
+		log.Fatal("No question found")
+		return false
+	}
 }
 
 func (database *Database) GetQuestionText(questionId int64) (text string) {
@@ -373,30 +396,15 @@ func (database *Database) SetQuestionVariants(questionId int64, variants []strin
 	}
 }
 
-func (database *Database) AddQuestionAnswer(questionId int64, userId int64, index int) (hasNextQuestion bool, qusetionIsEnded bool) {
+func (database *Database) AddQuestionAnswer(questionId int64, userId int64, index int) {
 	database.execQuery(fmt.Sprintf("INSERT INTO answered_questions (user_id, question_id)" +
 		" SELECT %d, q.question_id FROM pending_questions as q" +
 		" WHERE q.user_id=%d" +
 		" LIMIT 1", userId, userId))
-
-	database.execQuery(fmt.Sprintf("DELETE FROM pending_questions WHERE user_id=%d LIMIT 1", userId))
-
-	row := database.conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM pending_questions WHERE user_id=%d", userId))
-
-	var count int64 = 0
-	if row != nil {
-		row.Scan(&count)
-	}
-
-	hasNextQuestion = (count > 0)
-
-	if count == 0 {
-		database.execQuery(fmt.Sprintf("UPDATE users SET is_ready=1 WHERE id=%d", userId))
-	}
-	return
 }
 
 func (database *Database) RemoveUserPendingQuestion(userId int64, questionId int64) {
+	database.execQuery(fmt.Sprintf("DELETE FROM pending_questions WHERE user_id=%d AND question_id=%d", userId, questionId))
 }
 
 func (database *Database) GetQuestionRespondents(questionId int64) {
@@ -444,10 +452,26 @@ func (database *Database) IsQuestionReady(questionId int64) (isReady bool) {
 
 func (database *Database) CommitQuestion(questionId int64) {
 	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET status=1 WHERE id=%d", questionId))
+
+	// add to pending questions for all users
+	database.conn.Exec(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id) " +
+	"SELECT DISTINCT id, %d FROM users;", questionId))
 }
 
-func (database *Database) DiscardQuestion(userId int64) {
+func (database *Database) DiscardQuestion(questionId int64) {
+	database.execQuery(fmt.Sprintf("DELETE FROM questions where status=0 AND id=%d", questionId))
+}
 
+func (database *Database) EndQuestion(questionId int64) {
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET status=2 WHERE id=%d", questionId))
+}
+
+func (database *Database) MarkUserReady(userId int64) {
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=1 WHERE id=%d", userId))
+}
+
+func (database *Database) UnmarkUserReady(userId int64) {
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=0 WHERE id=%d", userId))
 }
 
 func (database *Database) GetReadyUsersChatIds() (users []int64) {
@@ -470,11 +494,7 @@ func (database *Database) GetReadyUsersChatIds() (users []int64) {
 	return
 }
 
-func (database *Database) SetUserReady(userId int64) {
-	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=1 WHERE id=%d", userId))
-}
-
-func (database *Database) SetUsersUnready(chatIds []int64) {
+func (database *Database) UnmarkUsersReady(chatIds []int64) {
 	count := len(chatIds)
 	if count > 0 {
 		var buffer bytes.Buffer
@@ -487,5 +507,13 @@ func (database *Database) SetUsersUnready(chatIds []int64) {
 
 		database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=0 WHERE chat_id IN (%s)", buffer.String()))
 	}
+}
+
+func (database *Database) RemoveQuestionFromAllUsers(questionId int64) {
+
+}
+
+func (database *Database) GetUsersAnsweringQuestionNow(questionId int64) (users []int64) {
+	return []int64{}
 }
 

@@ -97,9 +97,7 @@ func TestUserReady(t *testing.T) {
 	{
 		readyUsers := db.GetReadyUsersChatIds()
 		assert.Equal(1, len(readyUsers))
-		if len(readyUsers) > 0 {
-			assert.Equal(chatId, readyUsers[0])
-		}
+		assert.Equal(chatId, readyUsers[0])
 	}
 
 	db.UnmarkUserReady(userId)
@@ -114,9 +112,7 @@ func TestUserReady(t *testing.T) {
 	{
 		readyUsers := db.GetReadyUsersChatIds()
 		assert.Equal(1, len(readyUsers))
-		if len(readyUsers) > 0 {
-			assert.Equal(chatId, readyUsers[0])
-		}
+		assert.Equal(chatId, readyUsers[0])
 	}
 }
 
@@ -166,10 +162,8 @@ func TestCreateQuestion(t *testing.T) {
 		assert.Equal(int64(2), db.GetQuestionVariantsCount(questionId))
 		variants := db.GetQuestionVariants(questionId)
 		assert.Equal(2, len(variants))
-		if len(variants) == 2 {
-			assert.Equal("v1", variants[0])
-			assert.Equal("v2", variants[1])
-		}
+		assert.Equal("v1", variants[0])
+		assert.Equal("v2", variants[1])
 
 		db.Disconnect()
 	}
@@ -237,7 +231,7 @@ func TestDiscardQustion(t *testing.T) {
 func TestAnswerQuestion(t *testing.T) {
 	assert := require.New(t)
 	clearDb()
-	//defer clearDb()
+	defer clearDb()
 
 	var chatId1 int64 = 13
 	var chatId2 int64 = 95
@@ -252,7 +246,7 @@ func TestAnswerQuestion(t *testing.T) {
 		db.UnmarkUserReady(userId1)
 		questionId := db.GetUserEditingQuestion(userId1)
 		db.SetQuestionText(questionId, "text")
-		db.SetQuestionVariants(questionId, []string{"v1", "v2"})
+		db.SetQuestionVariants(questionId, []string{"v1", "v2", "v3"})
 		db.SetQuestionRules(questionId, 0, 2, 0)
 		db.CommitQuestion(questionId)
 
@@ -271,6 +265,7 @@ func TestAnswerQuestion(t *testing.T) {
 
 		questionId := db.GetUserNextQuestion(userId1)
 		db.AddQuestionAnswer(questionId, userId1, 0)
+		db.RemoveUserPendingQuestion(userId1, questionId)
 		db.Disconnect()
 	}
 
@@ -282,14 +277,37 @@ func TestAnswerQuestion(t *testing.T) {
 
 		questionId := db.GetUserNextQuestion(userId2)
 		db.AddQuestionAnswer(questionId, userId2, 1)
+		db.RemoveUserPendingQuestion(userId2, questionId)
 		db.EndQuestion(questionId)
 		users := db.GetUsersAnsweringQuestionNow(questionId)
+		assert.Equal(1, len(users))
+
 		for _, user := range(users) {
 			db.RemoveUserPendingQuestion(user, questionId)
+
+			assert.False(db.IsUserEditingQuestion(user))
+
 			if !db.IsUserHasPendingQuestions(user) {
 				db.MarkUserReady(user)
 			}
+
 		}
+		db.RemoveQuestionFromAllUsers(questionId)
+
+		respondents := db.GetQuestionRespondents(questionId)
+
+		assert.Equal(2, len(respondents))
+		// order can be changed
+		assert.Equal(int64(13), respondents[0])
+		assert.Equal(int64(95), respondents[1])
+
+		answers := db.GetQuestionAnswers(questionId)
+
+		assert.Equal(3, len(answers))
+		assert.Equal(int64(1), answers[0])
+		assert.Equal(int64(1), answers[1])
+		assert.Equal(int64(0), answers[2])
+
 		db.Disconnect()
 	}
 }

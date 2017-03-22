@@ -9,6 +9,11 @@ import (
 	"github.com/gameraccoon/telegram-poll-bot/database"
 )
 
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
+
 func getFileStringContent(filePath string) string {
 	fileContent, err := ioutil.ReadFile(filePath)
 	if err != nil {

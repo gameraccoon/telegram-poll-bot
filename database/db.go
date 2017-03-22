@@ -9,6 +9,10 @@ import (
 	"strconv"
 )
 
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
 type Database struct {
 	// connection
 	conn *sql.DB
@@ -204,8 +208,28 @@ func (database *Database) GetUserEditingQuestion(userId int64) (questionId int64
 	return
 }
 
-func (database *Database) GetUserNextQuestion(userId int64) int64 {
-	return 0
+func (database *Database) GetUserNextQuestion(userId int64) (questionId int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT MIN(question_id) FROM pending_questions WHERE user_id=%d", userId))
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		err := rows.Scan(&questionId)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No question found")
+	}
+
+	return
 }
 
 func (database *Database) IsUserEditingQuestion(userId int64) bool {
@@ -359,6 +383,21 @@ func (database *Database) GetQuestionRules(questionId int64) (minAnswers int64, 
 }
 
 func (database *Database) GetQuestionAnswers(questionId int64) (answers []int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT votes_count FROM variants WHERE question_id=%d ORDER BY index_number ASC", questionId))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var answer int64
+		err := rows.Scan(&answer)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		answers = append(answers, answer)
+	}
+
 	return
 }
 
@@ -397,17 +436,32 @@ func (database *Database) SetQuestionVariants(questionId int64, variants []strin
 }
 
 func (database *Database) AddQuestionAnswer(questionId int64, userId int64, index int) {
-	database.execQuery(fmt.Sprintf("INSERT INTO answered_questions (user_id, question_id)" +
-		" SELECT %d, q.question_id FROM pending_questions as q" +
-		" WHERE q.user_id=%d" +
-		" LIMIT 1", userId, userId))
+	database.execQuery(fmt.Sprintf("INSERT INTO answered_questions (user_id, question_id) VALUES (%d,%d)", userId, questionId))
+
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK variants SET votes_count=votes_count+1 WHERE question_id=%d AND index_number=%d", questionId, index))
 }
 
 func (database *Database) RemoveUserPendingQuestion(userId int64, questionId int64) {
 	database.execQuery(fmt.Sprintf("DELETE FROM pending_questions WHERE user_id=%d AND question_id=%d", userId, questionId))
 }
 
-func (database *Database) GetQuestionRespondents(questionId int64) {
+func (database *Database) GetQuestionRespondents(questionId int64) (respondents []int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT u.chat_id FROM answered_questions as q INNER JOIN users as u WHERE q.question_id=%d AND q.user_id=u.id", questionId))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var respondent int64
+		err := rows.Scan(&respondent)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		respondents = append(respondents, respondent)
+	}
+
+	return
 }
 
 func (database *Database) StartCreatingQuestion(author int64) {
@@ -510,10 +564,28 @@ func (database *Database) UnmarkUsersReady(chatIds []int64) {
 }
 
 func (database *Database) RemoveQuestionFromAllUsers(questionId int64) {
-
+	database.execQuery(fmt.Sprintf("DELETE FROM pending_questions WHERE question_id=%d", questionId))
 }
 
 func (database *Database) GetUsersAnsweringQuestionNow(questionId int64) (users []int64) {
-	return []int64{}
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT t.user_id FROM" +
+		" (SELECT user_id, MIN(question_id) as next_question_id FROM pending_questions GROUP BY user_id) as t" +
+		" WHERE t.next_question_id=%d", questionId))
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var user int64
+		err := rows.Scan(&user)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		users = append(users, user)
+	}
+
+	return
 }
 

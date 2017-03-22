@@ -7,10 +7,12 @@ import (
 	"io/ioutil"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/gameraccoon/telegram-poll-bot/database"
+	"github.com/nicksnyder/go-i18n/i18n"
 )
 
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	i18n.MustLoadTranslationFile("./data/strings/en-us.all.json")
 }
 
 
@@ -27,11 +29,19 @@ func getApiToken() string {
 	return getFileStringContent("./telegramApiToken.txt")
 }
 
-func sendMessage(bot *tgbotapi.BotAPI,chatId int64, message string) {
+func sendMessage(bot *tgbotapi.BotAPI, chatId int64, message string) {
 	msg := tgbotapi.NewMessage(chatId, message)
 	bot.Send(msg)
 }
 
+type userState int
+
+const (
+	Normal userState = iota
+	WaitingText
+	WaitingVariants
+	WaitingRules
+)
 
 func main() {
 	var apiToken string = getApiToken()
@@ -56,12 +66,14 @@ func main() {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
+	userStates := make(map[int64]userState)
+
 	updates, err := bot.GetUpdatesChan(u)
 
 	for update := range updates {
 		if update.Message == nil {
 			continue
 		}
-		processUpdate(&update, bot, db)
+		processUpdate(&update, bot, db, userStates)
 	}
 }

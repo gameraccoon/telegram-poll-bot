@@ -249,10 +249,19 @@ func TestAnswerQuestion(t *testing.T) {
 		db.SetQuestionVariants(questionId, []string{"v1", "v2", "v3"})
 		db.SetQuestionRules(questionId, 0, 2, 0)
 		db.CommitQuestion(questionId)
+		db.MarkUserReady(userId1)
 
 		assert.True(db.IsUserHasPendingQuestions(userId1))
 		assert.True(db.IsUserHasPendingQuestions(userId2))
 		assert.True(db.IsUserHasPendingQuestions(userId3))
+
+		readyUsers := db.GetReadyUsersChatIds()
+
+		assert.Equal(3, len(readyUsers))
+		// order can be changed
+		assert.Equal(int64(13), readyUsers[0])
+		assert.Equal(int64(95), readyUsers[1])
+		assert.Equal(int64(45), readyUsers[2])
 
 		db.Disconnect()
 	}
@@ -264,7 +273,7 @@ func TestAnswerQuestion(t *testing.T) {
 		assert.True(db.IsUserHasPendingQuestions(userId1))
 
 		questionId := db.GetUserNextQuestion(userId1)
-		db.AddQuestionAnswer(questionId, userId1, 0)
+		db.AddQuestionAnswer(questionId, userId1, int64(0))
 		db.RemoveUserPendingQuestion(userId1, questionId)
 		db.Disconnect()
 	}
@@ -276,7 +285,7 @@ func TestAnswerQuestion(t *testing.T) {
 		assert.True(db.IsUserHasPendingQuestions(userId2))
 
 		questionId := db.GetUserNextQuestion(userId2)
-		db.AddQuestionAnswer(questionId, userId2, 1)
+		db.AddQuestionAnswer(questionId, userId2, int64(1))
 		db.RemoveUserPendingQuestion(userId2, questionId)
 		db.EndQuestion(questionId)
 		users := db.GetUsersAnsweringQuestionNow(questionId)

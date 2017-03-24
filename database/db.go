@@ -435,7 +435,7 @@ func (database *Database) SetQuestionVariants(questionId int64, variants []strin
 	}
 }
 
-func (database *Database) AddQuestionAnswer(questionId int64, userId int64, index int) {
+func (database *Database) AddQuestionAnswer(questionId int64, userId int64, index int64) {
 	database.execQuery(fmt.Sprintf("INSERT INTO answered_questions (user_id, question_id) VALUES (%d,%d)", userId, questionId))
 
 	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK variants SET votes_count=votes_count+1 WHERE question_id=%d AND index_number=%d", questionId, index))

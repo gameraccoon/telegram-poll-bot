@@ -358,7 +358,7 @@ func (database *Database) GetQuestionVariantsCount(questionId int64) (count int6
 	return
 }
 
-func (database *Database) GetQuestionRules(questionId int64) (minAnswers int64, maxAnswers int64, endTime int64) {
+func (database *Database) GetQuestionRules(questionId int64) (minAnswers int, maxAnswers int, endTime int) {
 	rows, err := database.conn.Query(fmt.Sprintf("SELECT min_votes,max_votes,end_time FROM questions WHERE id=%d", questionId))
 	if err != nil {
 		log.Fatal(err.Error())
@@ -382,7 +382,7 @@ func (database *Database) GetQuestionRules(questionId int64) (minAnswers int64, 
 
 }
 
-func (database *Database) GetQuestionAnswers(questionId int64) (answers []int64) {
+func (database *Database) GetQuestionAnswers(questionId int64) (answers []int) {
 	rows, err := database.conn.Query(fmt.Sprintf("SELECT votes_count FROM variants WHERE question_id=%d ORDER BY index_number ASC", questionId))
 	if err != nil {
 		log.Fatal(err.Error())
@@ -390,13 +390,38 @@ func (database *Database) GetQuestionAnswers(questionId int64) (answers []int64)
 	defer rows.Close()
 
 	for rows.Next() {
-		var answer int64
+		var answer int
 		err := rows.Scan(&answer)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
 		answers = append(answers, answer)
 	}
+
+	return
+}
+
+func (database *Database) GetQuestionAnswersCount(questionId int64) (count int) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT COUNT(*) FROM answered_questions WHERE question_id=%d", questionId))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		err := rows.Scan(&count)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No question found")
+	}
+
+
 
 	return
 }
@@ -584,6 +609,30 @@ func (database *Database) GetUsersAnsweringQuestionNow(questionId int64) (users 
 			log.Fatal(err.Error())
 		}
 		users = append(users, user)
+	}
+
+	return
+}
+
+func (database *Database) GetQuestionPendingCount(questionId int64) (count int) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT count(*) FROM pending_questions WHERE question_id=%d", questionId))
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		err := rows.Scan(&count)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No question found")
 	}
 
 	return

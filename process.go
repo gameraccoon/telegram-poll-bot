@@ -45,8 +45,10 @@ func sendQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64,
 
 	variants := db.GetQuestionVariants(questionId)
 	for i, variant := range(variants) {
-		questionMessage = questionMessage + fmt.Sprintf("/ans%d - %s %d\n", i, variant, len(usersChatIds))
+		questionMessage = questionMessage + fmt.Sprintf("/ans%d - %s\n", i, variant)
 	}
+
+	questionMessage = questionMessage + "/skip"
 
 	for _, chatId := range(usersChatIds) {
 		sendMessage(bot, chatId, questionMessage)
@@ -55,21 +57,80 @@ func sendQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64,
 	db.UnmarkUsersReady(usersChatIds)
 }
 
-func commitQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64, questionId int64) {
-	T, _ := i18n.Tfunc("en-US")
-	db.CommitQuestion(questionId)
-	sendMessage(bot, chatId, T("say_question_commited"))
-
+func processNextQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64) {
 	if db.IsUserHasPendingQuestions(userId) {
 		nextQuestion := db.GetUserNextQuestion(userId)
 		sendQuestion(bot, db, nextQuestion, []int64{chatId})
 	} else {
 		db.MarkUserReady(userId)
 	}
+}
+
+func commitQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64, questionId int64) {
+	T, _ := i18n.Tfunc("en-US")
+	db.CommitQuestion(questionId)
+	sendMessage(bot, chatId, T("say_question_commited"))
+
+	processNextQuestion(bot, db, userId, chatId)
 
 	users := db.GetReadyUsersChatIds()
 
 	sendQuestion(bot, db, questionId, users)
+}
+
+func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, respondents []int64) {
+	resultText := db.GetQuestionText(questionId)
+
+	variants := db.GetQuestionVariants(questionId)
+	answers := db.GetQuestionAnswers(questionId)
+	answersCount := db.GetQuestionAnswersCount(questionId)
+
+	for i, variant := range(variants) {
+		resultText = resultText + fmt.Sprintf("\n%s - %d(%d%%)", variant, answers[i], int64(100.0*float32(answers[i])/float32(answersCount)))
+	}
+
+	for _, respondent := range(respondents) {
+		sendMessage(bot, respondent, resultText)
+	}
+}
+
+func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64) {
+	T, _ := i18n.Tfunc("en-US")
+	db.EndQuestion(questionId)
+
+	users := db.GetUsersAnsweringQuestionNow(questionId)
+	for _, user := range(users) {
+		db.RemoveUserPendingQuestion(user, questionId)
+		chatId := db.GetUserChatId(user)
+		sendMessage(bot, db.GetUserChatId(user), T("say_question_outdated"))
+
+		if db.IsUserHasPendingQuestions(user) {
+			sendQuestion(bot, db, db.GetUserNextQuestion(user), []int64{chatId})
+		} else {
+			db.MarkUserReady(user)
+		}
+	}
+
+	db.RemoveQuestionFromAllUsers(questionId)
+
+	respondents := db.GetQuestionRespondents(questionId)
+	sendResults(bot, db, questionId, respondents)
+}
+
+func processCompleteness(bot *tgbotapi.BotAPI, db *database.Database, questionId int64) {
+	_, max_answers, _ := db.GetQuestionRules(questionId)
+
+	answersCount := db.GetQuestionAnswersCount(questionId)
+
+	if answersCount >= max_answers {
+		completeQuestion(bot, db, questionId)
+		return
+	}
+
+	if db.GetQuestionPendingCount(questionId) == 0 {
+		completeQuestion(bot, db, questionId)
+		return
+	}
 }
 
 func parseAnswer(bot *tgbotapi.BotAPI, db *database.Database, chatId int64, userId int64, message string) {
@@ -79,6 +140,12 @@ func parseAnswer(bot *tgbotapi.BotAPI, db *database.Database, chatId int64, user
 
 	if message == "/skip" {
 		db.RemoveUserPendingQuestion(userId, questionId)
+		sendMessage(bot, chatId, T("say_question_skipped"))
+
+		processCompleteness(bot, db, questionId)
+
+		processNextQuestion(bot, db, userId, chatId)
+		return
 	}
 
 	if !strings.HasPrefix(message, "/ans") {
@@ -97,12 +164,9 @@ func parseAnswer(bot *tgbotapi.BotAPI, db *database.Database, chatId int64, user
 		db.RemoveUserPendingQuestion(userId, questionId)
 		sendMessage(bot, chatId, T("say_answer_added"))
 
-		if db.IsUserHasPendingQuestions(userId) {
-			nextQuestion := db.GetUserNextQuestion(userId)
-			sendQuestion(bot, db, nextQuestion, []int64{chatId})
-		} else {
-			db.MarkUserReady(userId)
-		}
+		processCompleteness(bot, db, questionId)
+
+		processNextQuestion(bot, db, userId, chatId)
 	} else {
 		sendMessage(bot, chatId, T("warn_wrong_answer"))
 	}
@@ -121,8 +185,11 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 			if !db.IsUserEditingQuestion(userId) {
 				db.StartCreatingQuestion(userId)
 				db.UnmarkUserReady(userId)
+				userStates[chatId] = WaitingText
+				sendMessage(bot, chatId, T("ask_question_text"))
+			} else {
+				sendMessage(bot, chatId, T("editing_commands"))
 			}
-			sendMessage(bot, chatId, T("editing_commands"))
 		case "/set_text":
 			if db.IsUserEditingQuestion(userId) {
 				userStates[chatId] = WaitingText
@@ -147,7 +214,7 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 		case "/commit_question":
 			if db.IsUserEditingQuestion(userId) {
 				questionId := db.GetUserEditingQuestion(userId)
-				if db.IsQuestionReady(questionId) {
+				if db.IsQuestionReady(questionId) && db.GetQuestionVariantsCount(questionId) > 0 {
 					commitQuestion(bot, db, userId, chatId, questionId)
 				} else {
 					sendMessage(bot, chatId, T("warn_question_not_ready"))

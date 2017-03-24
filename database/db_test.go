@@ -179,9 +179,9 @@ func TestCreateQuestion(t *testing.T) {
 
 		assert.True(db.IsQuestionReady(questionId))
 		min, max, time := db.GetQuestionRules(questionId)
-		assert.Equal(int64(0), min)
-		assert.Equal(int64(5), max)
-		assert.Equal(int64(0), time)
+		assert.Equal(0, min)
+		assert.Equal(5, max)
+		assert.Equal(0, time)
 
 		db.Disconnect()
 	}
@@ -275,6 +275,9 @@ func TestAnswerQuestion(t *testing.T) {
 		questionId := db.GetUserNextQuestion(userId1)
 		db.AddQuestionAnswer(questionId, userId1, int64(0))
 		db.RemoveUserPendingQuestion(userId1, questionId)
+
+		assert.Equal(2, db.GetQuestionPendingCount(questionId))
+
 		db.Disconnect()
 	}
 
@@ -310,12 +313,16 @@ func TestAnswerQuestion(t *testing.T) {
 		assert.Equal(int64(13), respondents[0])
 		assert.Equal(int64(95), respondents[1])
 
+		answersCount := db.GetQuestionAnswersCount(questionId)
+
+		assert.Equal(2, answersCount)
+
 		answers := db.GetQuestionAnswers(questionId)
 
 		assert.Equal(3, len(answers))
-		assert.Equal(int64(1), answers[0])
-		assert.Equal(int64(1), answers[1])
-		assert.Equal(int64(0), answers[2])
+		assert.Equal(1, answers[0])
+		assert.Equal(1, answers[1])
+		assert.Equal(0, answers[2])
 
 		db.Disconnect()
 	}

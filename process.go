@@ -352,6 +352,8 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 			} else {
 				sendMessage(bot, chatId, t("warn_not_editing_question"))
 			}
+		case "/start":
+			sendMessage(bot, chatId, t("hello_message"))
 		default:
 			if db.IsUserEditingQuestion(userId) {
 				sendMessage(bot, chatId, t("warn_unknown_command"))

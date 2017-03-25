@@ -5,6 +5,7 @@ import (
 	"strings"
 	"strconv"
 	"bytes"
+	"time"
 	"github.com/gameraccoon/telegram-poll-bot/database"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/nicksnyder/go-i18n/i18n"
@@ -22,20 +23,20 @@ func setRules(db *database.Database, questionId int64, message string) (ok bool)
 		return false
 	}
 
-	var min_answers int64
-	var max_answers int64
+	var min_answers int
+	var max_answers int
 	var time int64
 	var err error
 
 	if len(rules) >= 1 {
-		min_answers, err = strconv.ParseInt(rules[0], 10, 64)
+		min_answers, err = strconv.Atoi(rules[0])
 		if err != nil || min_answers < 0 {
 			return false
 		}
 	}
 
 	if len(rules) >= 2 {
-		max_answers, err = strconv.ParseInt(rules[1], 10, 64)
+		max_answers, err = strconv.Atoi(rules[1])
 		if err != nil || max_answers < 0 {
 			return false
 		}
@@ -64,8 +65,8 @@ func setRules(db *database.Database, questionId int64, message string) (ok bool)
 			max_answers = min_answers
 		}
 	} else {
-		if (min_answers >= max_answers) {
-			min_answers = 0
+		if (min_answers > max_answers) {
+			min_answers = max_answers
 		}
 	}
 
@@ -102,9 +103,16 @@ func processNextQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int
 	}
 }
 
-func commitQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64, questionId int64, t i18n.TranslateFunc) {
+func commitQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
 	db.CommitQuestion(questionId)
 	sendMessage(bot, chatId, t("say_question_commited"))
+
+	min_answers, max_answers, durationTime := db.GetQuestionRules(questionId)
+
+	endTime := time.Now().Add(time.Duration(durationTime) * time.Minute)
+	timers[questionId] = endTime
+
+	db.SetQuestionRules(questionId, min_answers, max_answers, endTime.Unix())
 
 	processNextQuestion(bot, db, userId, chatId)
 
@@ -154,12 +162,12 @@ func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId in
 	sendResults(bot, db, questionId, respondents, t)
 }
 
-func processCompleteness(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, t i18n.TranslateFunc) {
-	_, max_answers, _ := db.GetQuestionRules(questionId)
+func processCompleteness(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
+	min_answers, max_answers, _ := db.GetQuestionRules(questionId)
 
 	answersCount := db.GetQuestionAnswersCount(questionId)
 
-	if answersCount >= max_answers {
+	if answersCount >= max_answers && max_answers > 0 {
 		completeQuestion(bot, db, questionId, t)
 		return
 	}
@@ -168,9 +176,16 @@ func processCompleteness(bot *tgbotapi.BotAPI, db *database.Database, questionId
 		completeQuestion(bot, db, questionId, t)
 		return
 	}
+
+	if _, ok := timers[questionId]; !ok {
+		if answersCount >= min_answers {
+			completeQuestion(bot, db, questionId, t)
+			return
+		}
+	}
 }
 
-func parseAnswer(bot *tgbotapi.BotAPI, db *database.Database, chatId int64, userId int64, message string, t i18n.TranslateFunc) {
+func parseAnswer(bot *tgbotapi.BotAPI, db *database.Database, chatId int64, userId int64, message string, timers map[int64]time.Time, t i18n.TranslateFunc) {
 	questionId := db.GetUserNextQuestion(userId)
 	variantsCount := db.GetQuestionVariantsCount(questionId)
 
@@ -178,7 +193,7 @@ func parseAnswer(bot *tgbotapi.BotAPI, db *database.Database, chatId int64, user
 		db.RemoveUserPendingQuestion(userId, questionId)
 		sendMessage(bot, chatId, t("say_question_skipped"))
 
-		processCompleteness(bot, db, questionId, t)
+		processCompleteness(bot, db, questionId, timers, t)
 
 		processNextQuestion(bot, db, userId, chatId)
 		return
@@ -202,7 +217,7 @@ func parseAnswer(bot *tgbotapi.BotAPI, db *database.Database, chatId int64, user
 		db.RemoveUserPendingQuestion(userId, questionId)
 		sendMessage(bot, chatId, t("say_answer_added"))
 
-		processCompleteness(bot, db, questionId, t)
+		processCompleteness(bot, db, questionId, timers, t)
 
 		processNextQuestion(bot, db, userId, chatId)
 	} else {
@@ -281,7 +296,7 @@ func sendEditingGuide(bot *tgbotapi.BotAPI, db *database.Database, userId int64,
 	sendMessage(bot, chatId, buffer.String())
 }
 
-func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, t i18n.TranslateFunc) {
+func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, t i18n.TranslateFunc) {
 	message := update.Message.Text
 	chatId := update.Message.Chat.ID
 	userId := db.GetUserId(chatId)
@@ -322,7 +337,7 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 			if db.IsUserEditingQuestion(userId) {
 				questionId := db.GetUserEditingQuestion(userId)
 				if db.IsQuestionReady(questionId) && db.GetQuestionVariantsCount(questionId) > 0 {
-					commitQuestion(bot, db, userId, chatId, questionId, t)
+					commitQuestion(bot, db, userId, chatId, questionId, timers, t)
 				} else {
 					sendMessage(bot, chatId, t("warn_question_not_ready"))
 				}
@@ -343,7 +358,7 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 				sendEditingGuide(bot, db, userId, chatId, t)
 			} else {
 				if db.IsUserHasPendingQuestions(userId) {
-					parseAnswer(bot, db, chatId, userId, message, t)
+					parseAnswer(bot, db, chatId, userId, message, timers, t)
 				} else {
 					sendMessage(bot, chatId, t("warn_unknown_command"))
 				}
@@ -404,5 +419,9 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 			}
 		}
 	}
+}
+
+func processTimer(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
+	processCompleteness(bot, db, questionId, timers, t)
 }
 

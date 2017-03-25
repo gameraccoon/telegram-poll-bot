@@ -184,7 +184,7 @@ func TestCreateQuestion(t *testing.T) {
 		min, max, time := db.GetQuestionRules(questionId)
 		assert.Equal(0, min)
 		assert.Equal(5, max)
-		assert.Equal(0, time)
+		assert.Equal(int64(0), time)
 
 		db.Disconnect()
 	}

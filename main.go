@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
+	"time"
 	"io/ioutil"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/gameraccoon/telegram-poll-bot/database"
@@ -45,6 +47,52 @@ const (
 	WaitingRules
 )
 
+func updateTimers(bot *tgbotapi.BotAPI, db *database.Database, t i18n.TranslateFunc, timers map[int64]time.Time, mutex *sync.Mutex) {
+	questions := db.GetActiveQuestions()
+
+	mutex.Lock()
+	for _, questionId := range(questions) {
+		_, _, endTime := db.GetQuestionRules(questionId)
+		if endTime > 0 {
+			timers[questionId] = time.Unix(endTime, 0)
+		}
+	}
+	mutex.Unlock()
+
+	for {
+		currentTime := time.Now()
+		mutex.Lock()
+		for questionId, endTime := range(timers) {
+			if endTime.Sub(currentTime).Seconds() < 0.0 {
+				delete(timers, questionId)
+				processTimer(bot, db, questionId, timers, t)
+			}
+		}
+		mutex.Unlock()
+		time.Sleep(30 * time.Second)
+	}
+}
+
+func updateBot(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, t i18n.TranslateFunc, timers map[int64]time.Time, mutex *sync.Mutex) {
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	updates, err := bot.GetUpdatesChan(u)
+
+	if (err != nil) {
+		log.Fatal(err.Error())
+	}
+
+	for update := range updates {
+		if update.Message == nil {
+			continue
+		}
+		mutex.Lock()
+		processUpdate(&update, bot, db, userStates, timers, t)
+		mutex.Unlock()
+	}
+}
+
 func main() {
 	var apiToken string = getApiToken()
 
@@ -70,17 +118,13 @@ func main() {
 		log.Fatal("Can't connect database")
 	}
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-
 	userStates := make(map[int64]userState)
 
-	updates, err := bot.GetUpdatesChan(u)
+	timers := make(map[int64]time.Time)
 
-	for update := range updates {
-		if update.Message == nil {
-			continue
-		}
-		processUpdate(&update, bot, db, userStates, t)
-	}
+	mutex := &sync.Mutex{}
+
+	go updateTimers(bot, db, t, timers, mutex)
+	updateBot(bot, db, userStates, t, timers, mutex)
 }
+

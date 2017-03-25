@@ -358,7 +358,7 @@ func (database *Database) GetQuestionVariantsCount(questionId int64) (count int)
 	return
 }
 
-func (database *Database) GetQuestionRules(questionId int64) (minAnswers int, maxAnswers int, endTime int) {
+func (database *Database) GetQuestionRules(questionId int64) (minAnswers int, maxAnswers int, endTime int64) {
 	rows, err := database.conn.Query(fmt.Sprintf("SELECT min_votes,max_votes,end_time FROM questions WHERE id=%d", questionId))
 	if err != nil {
 		log.Fatal(err.Error())
@@ -426,7 +426,7 @@ func (database *Database) GetQuestionAnswersCount(questionId int64) (count int) 
 	return
 }
 
-func (database *Database) SetQuestionRules(questionId int64, minVotes int64, maxVotes int64, time int64) {
+func (database *Database) SetQuestionRules(questionId int64, minVotes int, maxVotes int, time int64) {
 	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET" +
 		" min_votes=%d" +
 		",max_votes=%d" +
@@ -699,6 +699,26 @@ func (database *Database) IsQuestionHasRules(questionId int64) (hasRules bool) {
 			log.Fatal(err)
 		}
 		log.Fatal("No row found")
+	}
+
+	return
+}
+
+func (database *Database) GetActiveQuestions() (activeQuestions []int64) {
+	rows, err := database.conn.Query("SELECT id FROM questions WHERE status=1")
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var questionId int64
+		err := rows.Scan(&questionId)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		activeQuestions = append(activeQuestions, questionId)
 	}
 
 	return

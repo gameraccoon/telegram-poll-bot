@@ -144,6 +144,8 @@ func TestCreateQuestion(t *testing.T) {
 
 		assert.Equal("text", db.GetQuestionText(questionId))
 		assert.False(db.IsQuestionReady(questionId))
+		assert.True(db.IsQuestionHasText(questionId))
+		assert.False(db.IsQuestionHasRules(questionId))
 
 		db.Disconnect()
 	}
@@ -159,7 +161,7 @@ func TestCreateQuestion(t *testing.T) {
 		db.SetQuestionVariants(questionId, []string{"v1", "v2"})
 
 		assert.False(db.IsQuestionReady(questionId))
-		assert.Equal(int64(2), db.GetQuestionVariantsCount(questionId))
+		assert.Equal(2, db.GetQuestionVariantsCount(questionId))
 		variants := db.GetQuestionVariants(questionId)
 		assert.Equal(2, len(variants))
 		assert.Equal("v1", variants[0])
@@ -177,6 +179,7 @@ func TestCreateQuestion(t *testing.T) {
 
 		db.SetQuestionRules(questionId, 0, 5, 0)
 
+		assert.True(db.IsQuestionHasRules(questionId))
 		assert.True(db.IsQuestionReady(questionId))
 		min, max, time := db.GetQuestionRules(questionId)
 		assert.Equal(0, min)

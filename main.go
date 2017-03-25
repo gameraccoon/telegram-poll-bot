@@ -31,6 +31,7 @@ func getApiToken() string {
 
 func sendMessage(bot *tgbotapi.BotAPI, chatId int64, message string) {
 	msg := tgbotapi.NewMessage(chatId, message)
+	msg.ParseMode = "HTML"
 	bot.Send(msg)
 }
 
@@ -51,7 +52,7 @@ func main() {
 		log.Panic(err)
 	}
 
-	bot.Debug = true
+	//bot.Debug = true
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 

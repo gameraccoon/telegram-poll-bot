@@ -335,7 +335,7 @@ func (database *Database) GetQuestionVariants(questionId int64) (variants []stri
 	return
 }
 
-func (database *Database) GetQuestionVariantsCount(questionId int64) (count int64) {
+func (database *Database) GetQuestionVariantsCount(questionId int64) (count int) {
 	rows, err := database.conn.Query(fmt.Sprintf("SELECT COUNT(*) FROM variants WHERE question_id=%d", questionId))
 	if err != nil {
 		log.Fatal(err.Error())
@@ -633,6 +633,72 @@ func (database *Database) GetQuestionPendingCount(questionId int64) (count int) 
 			log.Fatal(err)
 		}
 		log.Fatal("No question found")
+	}
+
+	return
+}
+
+func (database *Database) IsQuestionHasText(questionId int64) (hasText bool) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT COUNT(*) FROM questions WHERE id=%d AND text NOT NULL", questionId))
+	if err != nil {
+		log.Fatal(err.Error())
+		return
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		var count int64
+		err := rows.Scan(&count)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+
+		if count != 0 {
+			hasText = true
+
+			if count != 1 {
+				log.Fatalf("Count should be 0 or 1: %d", count)
+			}
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No row found")
+	}
+
+	return
+}
+
+func (database *Database) IsQuestionHasRules(questionId int64) (hasRules bool) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT COUNT(*) FROM questions WHERE id=%d AND end_time NOT NULL AND min_votes NOT NULL AND max_votes NOT NULL", questionId))
+	if err != nil {
+		log.Fatal(err.Error())
+		return
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		var count int64
+		err := rows.Scan(&count)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+
+		if count != 0 {
+			hasRules = true
+
+			if count != 1 {
+				log.Fatalf("Count should be 0 or 1: %d", count)
+			}
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No row found")
 	}
 
 	return

@@ -140,8 +140,10 @@ func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, 
 	}
 }
 
-func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, t i18n.TranslateFunc) {
+func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
 	db.EndQuestion(questionId)
+
+	delete(timers, questionId)
 
 	users := db.GetUsersAnsweringQuestionNow(questionId)
 	for _, user := range(users) {
@@ -168,18 +170,18 @@ func processCompleteness(bot *tgbotapi.BotAPI, db *database.Database, questionId
 	answersCount := db.GetQuestionAnswersCount(questionId)
 
 	if answersCount >= max_answers && max_answers > 0 {
-		completeQuestion(bot, db, questionId, t)
+		completeQuestion(bot, db, questionId, timers, t)
 		return
 	}
 
 	if db.GetQuestionPendingCount(questionId) == 0 {
-		completeQuestion(bot, db, questionId, t)
+		completeQuestion(bot, db, questionId, timers, t)
 		return
 	}
 
 	if _, ok := timers[questionId]; !ok {
 		if answersCount >= min_answers {
-			completeQuestion(bot, db, questionId, t)
+			completeQuestion(bot, db, questionId, timers, t)
 			return
 		}
 	}
@@ -349,6 +351,7 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 				questionId := db.GetUserEditingQuestion(userId)
 				db.DiscardQuestion(questionId)
 				sendMessage(bot, chatId, t("say_question_discarded"))
+				processNextQuestion(bot, db, userId, chatId)
 			} else {
 				sendMessage(bot, chatId, t("warn_not_editing_question"))
 			}

@@ -80,7 +80,7 @@ func sendQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64,
 
 	variants := db.GetQuestionVariants(questionId)
 	for i, variant := range(variants) {
-		buffer.WriteString(fmt.Sprintf("/ans%d - %s\n", i, variant))
+		buffer.WriteString(fmt.Sprintf("/ans%d - %s\n", i + 1, variant))
 	}
 
 	buffer.WriteString("/skip")
@@ -102,10 +102,9 @@ func processNextQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int
 	}
 }
 
-func commitQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64, questionId int64) {
-	T, _ := i18n.Tfunc("en-US")
+func commitQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64, questionId int64, t i18n.TranslateFunc) {
 	db.CommitQuestion(questionId)
-	sendMessage(bot, chatId, T("say_question_commited"))
+	sendMessage(bot, chatId, t("say_question_commited"))
 
 	processNextQuestion(bot, db, userId, chatId)
 
@@ -114,13 +113,14 @@ func commitQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, c
 	sendQuestion(bot, db, questionId, users)
 }
 
-func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, respondents []int64) {
+func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, respondents []int64, t i18n.TranslateFunc) {
 	variants := db.GetQuestionVariants(questionId)
 	answers := db.GetQuestionAnswers(questionId)
 	answersCount := db.GetQuestionAnswersCount(questionId)
 
 	var buffer bytes.Buffer
-	buffer.WriteString(db.GetQuestionText(questionId))
+	buffer.WriteString(t("results_header"))
+	buffer.WriteString(fmt.Sprintf("<i>%s</i>", db.GetQuestionText(questionId)))
 
 	for i, variant := range(variants) {
 		buffer.WriteString(fmt.Sprintf("\n%s - %d (%d%%)", variant, answers[i], int64(100.0*float32(answers[i])/float32(answersCount))))
@@ -132,15 +132,14 @@ func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, 
 	}
 }
 
-func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64) {
-	T, _ := i18n.Tfunc("en-US")
+func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, t i18n.TranslateFunc) {
 	db.EndQuestion(questionId)
 
 	users := db.GetUsersAnsweringQuestionNow(questionId)
 	for _, user := range(users) {
 		db.RemoveUserPendingQuestion(user, questionId)
 		chatId := db.GetUserChatId(user)
-		sendMessage(bot, db.GetUserChatId(user), T("say_question_outdated"))
+		sendMessage(bot, db.GetUserChatId(user), t("say_question_outdated"))
 
 		if db.IsUserHasPendingQuestions(user) {
 			sendQuestion(bot, db, db.GetUserNextQuestion(user), []int64{chatId})
@@ -152,61 +151,62 @@ func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId in
 	db.RemoveQuestionFromAllUsers(questionId)
 
 	respondents := db.GetQuestionRespondents(questionId)
-	sendResults(bot, db, questionId, respondents)
+	sendResults(bot, db, questionId, respondents, t)
 }
 
-func processCompleteness(bot *tgbotapi.BotAPI, db *database.Database, questionId int64) {
+func processCompleteness(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, t i18n.TranslateFunc) {
 	_, max_answers, _ := db.GetQuestionRules(questionId)
 
 	answersCount := db.GetQuestionAnswersCount(questionId)
 
 	if answersCount >= max_answers {
-		completeQuestion(bot, db, questionId)
+		completeQuestion(bot, db, questionId, t)
 		return
 	}
 
 	if db.GetQuestionPendingCount(questionId) == 0 {
-		completeQuestion(bot, db, questionId)
+		completeQuestion(bot, db, questionId, t)
 		return
 	}
 }
 
-func parseAnswer(bot *tgbotapi.BotAPI, db *database.Database, chatId int64, userId int64, message string) {
-	T, _ := i18n.Tfunc("en-US")
+func parseAnswer(bot *tgbotapi.BotAPI, db *database.Database, chatId int64, userId int64, message string, t i18n.TranslateFunc) {
 	questionId := db.GetUserNextQuestion(userId)
 	variantsCount := db.GetQuestionVariantsCount(questionId)
 
 	if message == "/skip" {
 		db.RemoveUserPendingQuestion(userId, questionId)
-		sendMessage(bot, chatId, T("say_question_skipped"))
+		sendMessage(bot, chatId, t("say_question_skipped"))
 
-		processCompleteness(bot, db, questionId)
+		processCompleteness(bot, db, questionId, t)
 
 		processNextQuestion(bot, db, userId, chatId)
 		return
 	}
 
 	if !strings.HasPrefix(message, "/ans") {
-		sendMessage(bot, chatId, T("warn_wrong_answer"))
+		sendMessage(bot, chatId, t("warn_wrong_answer"))
 		return
 	}
 
 	answer, err := strconv.ParseInt(message[4:len(message)], 10, 64)
 	if err != nil {
-		sendMessage(bot, chatId, T("warn_wrong_answer"))
+		sendMessage(bot, chatId, t("warn_wrong_answer"))
 		return
 	}
+
+	answer -= 1
 
 	if answer >= 0 && int(answer) < variantsCount {
 		db.AddQuestionAnswer(questionId, userId, answer)
 		db.RemoveUserPendingQuestion(userId, questionId)
-		sendMessage(bot, chatId, T("say_answer_added"))
+		sendMessage(bot, chatId, t("say_answer_added"))
 
-		processCompleteness(bot, db, questionId)
+		processCompleteness(bot, db, questionId, t)
 
 		processNextQuestion(bot, db, userId, chatId)
 	} else {
-		sendMessage(bot, chatId, T("warn_wrong_answer"))
+		sendMessage(bot, chatId, t("warn_wrong_answer"))
 	}
 }
 
@@ -214,38 +214,37 @@ func appendCommand(buffer *bytes.Buffer, command string, description string) {
 	buffer.WriteString(fmt.Sprintf("\n%s - %s", command, description))
 }
 
-func sendEditingGuide(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64) {
-	T, _ := i18n.Tfunc("en-US")
+func sendEditingGuide(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64, t i18n.TranslateFunc) {
 	questionId := db.GetUserEditingQuestion(userId)
 
 	var buffer bytes.Buffer
-	buffer.WriteString(T("question_header"))
+	buffer.WriteString(t("question_header"))
 
-	buffer.WriteString(T("text_caption"))
+	buffer.WriteString(t("text_caption"))
 	if db.IsQuestionHasText(questionId) {
 		buffer.WriteString(fmt.Sprintf("%s", db.GetQuestionText(questionId)))
 	} else {
-		buffer.WriteString(T("not_set"))
+		buffer.WriteString(t("not_set"))
 	}
 
-	buffer.WriteString(T("variants_caption"))
+	buffer.WriteString(t("variants_caption"))
 	if db.GetQuestionVariantsCount(questionId) > 0 {
 		variants := db.GetQuestionVariants(questionId)
 
 		for i, variant := range(variants) {
-			buffer.WriteString(fmt.Sprintf("\n<i>%d</i> - %s", i, variant))
+			buffer.WriteString(fmt.Sprintf("\n<i>%d</i> - %s", i + 1, variant))
 		}
 	} else {
-		buffer.WriteString(T("not_set"))
+		buffer.WriteString(t("not_set"))
 	}
 
-	buffer.WriteString(T("rules_caption"))
+	buffer.WriteString(t("rules_caption"))
 	if db.IsQuestionHasRules(questionId) {
 		min_answers, max_answers, time := db.GetQuestionRules(questionId)
 		rulesData := map[string]interface{}{
-			"Min": min_answers,
-			"Max": max_answers,
-			"Time": time,
+			"Min": t("answers", min_answers),
+			"Max": t("answers", max_answers),
+			"Time": t("hours", time),
 		}
 		var rulesTextFormat string
 
@@ -267,27 +266,25 @@ func sendEditingGuide(bot *tgbotapi.BotAPI, db *database.Database, userId int64,
 			rulesTextFormat = "rules_min"
 		}
 
-		buffer.WriteString(T(rulesTextFormat, rulesData))
+		buffer.WriteString(t(rulesTextFormat, rulesData))
 	} else {
-		buffer.WriteString(T("not_set"))
+		buffer.WriteString(t("not_set"))
 	}
 
-	appendCommand(&buffer, "/set_text", T("editing_commands_text"))
-	appendCommand(&buffer, "/set_variants", T("editing_commands_variants"))
-	appendCommand(&buffer, "/set_rules", T("editing_commands_rules"))
+	appendCommand(&buffer, "/set_text", t("editing_commands_text"))
+	appendCommand(&buffer, "/set_variants", t("editing_commands_variants"))
+	appendCommand(&buffer, "/set_rules", t("editing_commands_rules"))
 	if db.IsQuestionReady(questionId) {
-		appendCommand(&buffer, "/commit_question", T("editing_commands_commit"))
+		appendCommand(&buffer, "/commit_question", t("editing_commands_commit"))
 	}
-	appendCommand(&buffer, "/discard_question", T("editing_commands_discard"))
+	appendCommand(&buffer, "/discard_question", t("editing_commands_discard"))
 	sendMessage(bot, chatId, buffer.String())
 }
 
-func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState) {
+func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, t i18n.TranslateFunc) {
 	message := update.Message.Text
 	chatId := update.Message.Chat.ID
 	userId := db.GetUserId(chatId)
-
-	T, _ := i18n.Tfunc("en-US")
 
 	if strings.HasPrefix(message, "/") {
 		switch message {
@@ -296,59 +293,59 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 				db.StartCreatingQuestion(userId)
 				db.UnmarkUserReady(userId)
 				userStates[chatId] = WaitingText
-				sendMessage(bot, chatId, T("ask_question_text"))
+				sendMessage(bot, chatId, t("ask_question_text"))
 			} else {
-				sendEditingGuide(bot, db, userId, chatId)
+				sendEditingGuide(bot, db, userId, chatId, t)
 			}
 		case "/set_text":
 			if db.IsUserEditingQuestion(userId) {
 				userStates[chatId] = WaitingText
-				sendMessage(bot, chatId, T("ask_question_text"))
+				sendMessage(bot, chatId, t("ask_question_text"))
 			} else {
-				sendMessage(bot, chatId, T("warn_not_editing_question"))
+				sendMessage(bot, chatId, t("warn_not_editing_question"))
 			}
 		case "/set_variants":
 			if db.IsUserEditingQuestion(userId) {
 				userStates[chatId] = WaitingVariants
-				sendMessage(bot, chatId, T("ask_variants"))
+				sendMessage(bot, chatId, t("ask_variants"))
 			} else {
-				sendMessage(bot, chatId, T("warn_not_editing_question"))
+				sendMessage(bot, chatId, t("warn_not_editing_question"))
 			}
 		case "/set_rules":
 			if db.IsUserEditingQuestion(userId) {
 				userStates[chatId] = WaitingRules
-				sendMessage(bot, chatId, T("ask_rules"))
+				sendMessage(bot, chatId, t("ask_rules"))
 			} else {
-				sendMessage(bot, chatId, T("warn_not_editing_question"))
+				sendMessage(bot, chatId, t("warn_not_editing_question"))
 			}
 		case "/commit_question":
 			if db.IsUserEditingQuestion(userId) {
 				questionId := db.GetUserEditingQuestion(userId)
 				if db.IsQuestionReady(questionId) && db.GetQuestionVariantsCount(questionId) > 0 {
-					commitQuestion(bot, db, userId, chatId, questionId)
+					commitQuestion(bot, db, userId, chatId, questionId, t)
 				} else {
-					sendMessage(bot, chatId, T("warn_question_not_ready"))
+					sendMessage(bot, chatId, t("warn_question_not_ready"))
 				}
 			} else {
-				sendMessage(bot, chatId, T("warn_not_editing_question"))
+				sendMessage(bot, chatId, t("warn_not_editing_question"))
 			}
 		case "/discard_question":
 			if db.IsUserEditingQuestion(userId) {
 				questionId := db.GetUserEditingQuestion(userId)
 				db.DiscardQuestion(questionId)
-				sendMessage(bot, chatId, T("say_question_discarded"))
+				sendMessage(bot, chatId, t("say_question_discarded"))
 			} else {
-				sendMessage(bot, chatId, T("warn_not_editing_question"))
+				sendMessage(bot, chatId, t("warn_not_editing_question"))
 			}
 		default:
 			if db.IsUserEditingQuestion(userId) {
-				sendMessage(bot, chatId, T("warn_unknown_command"))
-				sendEditingGuide(bot, db, userId, chatId)
+				sendMessage(bot, chatId, t("warn_unknown_command"))
+				sendEditingGuide(bot, db, userId, chatId, t)
 			} else {
 				if db.IsUserHasPendingQuestions(userId) {
-					parseAnswer(bot, db, chatId, userId, message)
+					parseAnswer(bot, db, chatId, userId, message, t)
 				} else {
-					sendMessage(bot, chatId, T("warn_unknown_command"))
+					sendMessage(bot, chatId, t("warn_unknown_command"))
 				}
 			}
 		}
@@ -359,11 +356,11 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 				if db.IsUserEditingQuestion(userId) {
 					questionId := db.GetUserEditingQuestion(userId)
 					db.SetQuestionText(questionId, message)
-					sendMessage(bot, chatId, T("say_text_is_set"))
-					sendEditingGuide(bot, db, userId, chatId)
+					sendMessage(bot, chatId, t("say_text_is_set"))
+					sendEditingGuide(bot, db, userId, chatId, t)
 					delete(userStates, chatId)
 				} else {
-					sendMessage(bot, chatId, T("warn_unknown_command"))
+					sendMessage(bot, chatId, t("warn_unknown_command"))
 					delete(userStates, chatId)
 				}
 			case WaitingVariants:
@@ -371,14 +368,14 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 					questionId := db.GetUserEditingQuestion(userId)
 					ok := setVariants(db, questionId, message)
 					if ok {
-						sendMessage(bot, chatId, T("say_variants_is_set"))
-						sendEditingGuide(bot, db, userId, chatId)
+						sendMessage(bot, chatId, t("say_variants_is_set"))
+						sendEditingGuide(bot, db, userId, chatId, t)
 						delete(userStates, chatId)
 					} else {
-						sendMessage(bot, chatId, T("warn_bad_variants"))
+						sendMessage(bot, chatId, t("warn_bad_variants"))
 					}
 				} else {
-					sendMessage(bot, chatId, T("warn_unknown_command"))
+					sendMessage(bot, chatId, t("warn_unknown_command"))
 					delete(userStates, chatId)
 				}
 			case WaitingRules:
@@ -386,24 +383,24 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 					questionId := db.GetUserEditingQuestion(userId)
 					ok := setRules(db, questionId, message)
 					if ok {
-						sendMessage(bot, chatId, T("say_rules_is_set"))
-						sendEditingGuide(bot, db, userId, chatId)
+						sendMessage(bot, chatId, t("say_rules_is_set"))
+						sendEditingGuide(bot, db, userId, chatId, t)
 						delete(userStates, chatId)
 					} else {
-						sendMessage(bot, chatId, T("warn_bad_rules"))
+						sendMessage(bot, chatId, t("warn_bad_rules"))
 					}
 				} else {
-					sendMessage(bot, chatId, T("warn_unknown_command"))
+					sendMessage(bot, chatId, t("warn_unknown_command"))
 					delete(userStates, chatId)
 				}
 			default:
-				sendMessage(bot, chatId, T("warn_unknown_command"))
+				sendMessage(bot, chatId, t("warn_unknown_command"))
 				delete(userStates, chatId)
 			}
 		} else {
-			sendMessage(bot, chatId, T("warn_unknown_command"))
+			sendMessage(bot, chatId, t("warn_unknown_command"))
 			if db.IsUserEditingQuestion(userId) {
-				sendEditingGuide(bot, db, userId, chatId)
+				sendEditingGuide(bot, db, userId, chatId, t)
 			}
 		}
 	}

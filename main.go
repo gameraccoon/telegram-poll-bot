@@ -13,6 +13,7 @@ import (
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	i18n.MustLoadTranslationFile("./data/strings/en-us.all.json")
+	i18n.MustLoadTranslationFile("./data/strings/ru-ru.all.json")
 }
 
 
@@ -54,6 +55,11 @@ func main() {
 
 	//bot.Debug = true
 
+	t, err := i18n.Tfunc("ru-RU")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
 	db := &database.Database{}
@@ -75,6 +81,6 @@ func main() {
 		if update.Message == nil {
 			continue
 		}
-		processUpdate(&update, bot, db, userStates)
+		processUpdate(&update, bot, db, userStates, t)
 	}
 }

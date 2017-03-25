@@ -109,7 +109,7 @@ func commitQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, c
 
 	min_answers, max_answers, durationTime := db.GetQuestionRules(questionId)
 
-	endTime := time.Now().Add(time.Duration(durationTime) * time.Minute)
+	endTime := time.Now().Add(time.Duration(durationTime) * time.Hour)
 	timers[questionId] = endTime
 
 	db.SetQuestionRules(questionId, min_answers, max_answers, endTime.Unix())

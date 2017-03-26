@@ -357,6 +357,11 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 			}
 		case "/start":
 			sendMessage(bot, chatId, t("hello_message"))
+			if !db.IsUserHasPendingQuestions(userId) {
+				db.InitNewUserQuestions(userId)
+				db.UnmarkUserReady(userId)
+				processNextQuestion(bot, db, userId, chatId)
+			}
 		default:
 			if db.IsUserEditingQuestion(userId) {
 				sendMessage(bot, chatId, t("warn_unknown_command"))

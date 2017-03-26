@@ -724,3 +724,7 @@ func (database *Database) GetActiveQuestions() (activeQuestions []int64) {
 	return
 }
 
+func (database *Database) InitNewUserQuestions(userId int64) {
+	database.execQuery(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id) SELECT %d, id FROM questions WHERE status=1", userId))
+}
+

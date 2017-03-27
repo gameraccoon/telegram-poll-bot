@@ -725,6 +725,12 @@ func (database *Database) GetActiveQuestions() (activeQuestions []int64) {
 }
 
 func (database *Database) InitNewUserQuestions(userId int64) {
-	database.execQuery(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id) SELECT %d, id FROM questions WHERE status=1", userId))
+	// add to the user all unfinished questions that wasn't answered and already not in pending questions
+	// of this user
+	database.execQuery(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id)" +
+		" SELECT %d, q.id FROM questions as q" +
+		" LEFT JOIN pending_questions as pq ON q.id=pq.question_id AND pq.user_id=%d" +
+		" LEFT JOIN answered_questions as aq ON q.id=aq.question_id AND aq.user_id=%d" +
+		" WHERE pq.user_id IS NULL AND aq.user_id IS NULL AND q.status=1", userId, userId, userId))
 }
 

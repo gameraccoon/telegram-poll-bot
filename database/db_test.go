@@ -200,6 +200,23 @@ func TestCreateQuestion(t *testing.T) {
 
 		db.Disconnect()
 	}
+
+	{
+		// new user
+		db := connectDb(t)
+		var chatId4 int64 = 921
+		userId := db.GetUserId(chatId4)
+		db.InitNewUserQuestions(userId)
+		db.InitNewUserQuestions(userId) // check that double call do nothing
+		assert.True(db.IsUserHasPendingQuestions(userId))
+		question1 := db.GetUserNextQuestion(userId)
+		assert.Equal("text", db.GetQuestionText(question1))
+		db.AddQuestionAnswer(question1, userId, 1)
+		db.RemoveUserPendingQuestion(userId, question1)
+		db.InitNewUserQuestions(userId) // check that double call do nothing
+		assert.False(db.IsUserHasPendingQuestions(userId))
+	}
+
 }
 
 func TestDiscardQustion(t *testing.T) {
@@ -328,6 +345,15 @@ func TestAnswerQuestion(t *testing.T) {
 		assert.Equal(0, answers[2])
 
 		db.Disconnect()
+	}
+
+	{
+		// new user
+		db := connectDb(t)
+		var chatId4 int64 = 921
+		userId := db.GetUserId(chatId4)
+		db.InitNewUserQuestions(userId)
+		assert.False(db.IsUserHasPendingQuestions(userId))
 	}
 }
 

@@ -734,3 +734,27 @@ func (database *Database) InitNewUserQuestions(userId int64) {
 		" WHERE pq.user_id IS NULL AND aq.user_id IS NULL AND q.status=1", userId, userId, userId))
 }
 
+func (database *Database) GetLastFinishedQuestions(userId int64, count int) (questions []int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM" +
+		"(SELECT q.id as id FROM questions as q" +
+		" LEFT JOIN answered_questions as aq ON q.id=aq.question_id" +
+		" WHERE aq.user_id=%d AND q.status=2" +
+		" ORDER BY q.id DESC LIMIT %d) ORDER BY id ASC", userId, count))
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var questionId int64
+		err := rows.Scan(&questionId)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		questions = append(questions, questionId)
+	}
+
+	return
+}
+

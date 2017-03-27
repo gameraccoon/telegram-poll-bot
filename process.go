@@ -362,6 +362,11 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 				db.UnmarkUserReady(userId)
 				processNextQuestion(bot, db, userId, chatId)
 			}
+		case "/last_results":
+			questions := db.GetLastFinishedQuestions(userId, 10)
+			for _, questionId := range(questions) {
+				sendResults(bot, db, questionId, []int64{chatId}, t)
+			}
 		default:
 			if db.IsUserEditingQuestion(userId) {
 				sendMessage(bot, chatId, t("warn_unknown_command"))

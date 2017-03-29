@@ -1,14 +1,14 @@
 package main
 
 import (
-	"fmt"
-	"strings"
-	"strconv"
 	"bytes"
-	"time"
+	"fmt"
 	"github.com/gameraccoon/telegram-poll-bot/database"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/nicksnyder/go-i18n/i18n"
+	"strconv"
+	"strings"
+	"time"
 )
 
 func setVariants(db *database.Database, questionId int64, message string) (ok bool) {
@@ -65,7 +65,7 @@ func setRules(db *database.Database, questionId int64, message string) (ok bool)
 			max_answers = min_answers
 		}
 	} else {
-		if (min_answers > max_answers) {
+		if min_answers > max_answers {
 			min_answers = max_answers
 		}
 	}
@@ -80,14 +80,14 @@ func sendQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64,
 	buffer.WriteString(db.GetQuestionText(questionId) + "\n")
 
 	variants := db.GetQuestionVariants(questionId)
-	for i, variant := range(variants) {
-		buffer.WriteString(fmt.Sprintf("/ans%d - %s\n", i + 1, variant))
+	for i, variant := range variants {
+		buffer.WriteString(fmt.Sprintf("/ans%d - %s\n", i+1, variant))
 	}
 
 	buffer.WriteString("/skip")
 	message := buffer.String()
 
-	for _, chatId := range(usersChatIds) {
+	for _, chatId := range usersChatIds {
 		sendMessage(bot, chatId, message)
 	}
 
@@ -130,12 +130,12 @@ func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, 
 	buffer.WriteString(t("results_header"))
 	buffer.WriteString(fmt.Sprintf("<i>%s</i>", db.GetQuestionText(questionId)))
 
-	for i, variant := range(variants) {
+	for i, variant := range variants {
 		buffer.WriteString(fmt.Sprintf("\n%s - %d (%d%%)", variant, answers[i], int64(100.0*float32(answers[i])/float32(answersCount))))
 	}
 	resultText := buffer.String()
 
-	for _, chatId := range(chatIds) {
+	for _, chatId := range chatIds {
 		sendMessage(bot, chatId, resultText)
 	}
 }
@@ -146,7 +146,7 @@ func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId in
 	delete(timers, questionId)
 
 	users := db.GetUsersAnsweringQuestionNow(questionId)
-	for _, user := range(users) {
+	for _, user := range users {
 		db.RemoveUserPendingQuestion(user, questionId)
 		chatId := db.GetUserChatId(user)
 		sendMessage(bot, db.GetUserChatId(user), t("say_question_outdated"))
@@ -248,8 +248,8 @@ func sendEditingGuide(bot *tgbotapi.BotAPI, db *database.Database, userId int64,
 	if db.GetQuestionVariantsCount(questionId) > 0 {
 		variants := db.GetQuestionVariants(questionId)
 
-		for i, variant := range(variants) {
-			buffer.WriteString(fmt.Sprintf("\n<i>%d</i> - %s", i + 1, variant))
+		for i, variant := range variants {
+			buffer.WriteString(fmt.Sprintf("\n<i>%d</i> - %s", i+1, variant))
 		}
 	} else {
 		buffer.WriteString(t("not_set"))
@@ -259,8 +259,8 @@ func sendEditingGuide(bot *tgbotapi.BotAPI, db *database.Database, userId int64,
 	if db.IsQuestionHasRules(questionId) {
 		min_answers, max_answers, time := db.GetQuestionRules(questionId)
 		rulesData := map[string]interface{}{
-			"Min": t("answers", min_answers),
-			"Max": t("answers", max_answers),
+			"Min":  t("answers", min_answers),
+			"Max":  t("answers", max_answers),
 			"Time": t("hours", time),
 		}
 		var rulesTextFormat string
@@ -364,7 +364,7 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 			}
 		case "/last_results":
 			questions := db.GetLastFinishedQuestions(userId, 10)
-			for _, questionId := range(questions) {
+			for _, questionId := range questions {
 				sendResults(bot, db, questionId, []int64{chatId}, t)
 			}
 		default:
@@ -439,4 +439,3 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 func processTimer(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
 	processCompleteness(bot, db, questionId, timers, t)
 }
-

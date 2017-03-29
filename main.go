@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
+	"github.com/gameraccoon/telegram-poll-bot/database"
+	"github.com/go-telegram-bot-api/telegram-bot-api"
+	"github.com/nicksnyder/go-i18n/i18n"
+	"io/ioutil"
 	"log"
 	"strings"
 	"sync"
 	"time"
-	"io/ioutil"
-	"github.com/go-telegram-bot-api/telegram-bot-api"
-	"github.com/gameraccoon/telegram-poll-bot/database"
-	"github.com/nicksnyder/go-i18n/i18n"
 )
 
 func init() {
@@ -17,7 +17,6 @@ func init() {
 	i18n.MustLoadTranslationFile("./data/strings/en-us.all.json")
 	i18n.MustLoadTranslationFile("./data/strings/ru-ru.all.json")
 }
-
 
 func getFileStringContent(filePath string) string {
 	fileContent, err := ioutil.ReadFile(filePath)
@@ -51,7 +50,7 @@ func updateTimers(bot *tgbotapi.BotAPI, db *database.Database, t i18n.TranslateF
 	questions := db.GetActiveQuestions()
 
 	mutex.Lock()
-	for _, questionId := range(questions) {
+	for _, questionId := range questions {
 		_, _, endTime := db.GetQuestionRules(questionId)
 		if endTime > 0 {
 			timers[questionId] = time.Unix(endTime, 0)
@@ -62,7 +61,7 @@ func updateTimers(bot *tgbotapi.BotAPI, db *database.Database, t i18n.TranslateF
 	for {
 		currentTime := time.Now()
 		mutex.Lock()
-		for questionId, endTime := range(timers) {
+		for questionId, endTime := range timers {
 			if endTime.Sub(currentTime).Seconds() < 0.0 {
 				delete(timers, questionId)
 				processTimer(bot, db, questionId, timers, t)
@@ -79,7 +78,7 @@ func updateBot(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64
 
 	updates, err := bot.GetUpdatesChan(u)
 
-	if (err != nil) {
+	if err != nil {
 		log.Fatal(err.Error())
 	}
 
@@ -127,4 +126,3 @@ func main() {
 	go updateTimers(bot, db, t, timers, mutex)
 	updateBot(bot, db, userStates, t, timers, mutex)
 }
-

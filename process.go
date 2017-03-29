@@ -121,7 +121,7 @@ func commitQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, c
 	sendQuestion(bot, db, questionId, users)
 }
 
-func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, respondents []int64, t i18n.TranslateFunc) {
+func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, chatIds []int64, t i18n.TranslateFunc) {
 	variants := db.GetQuestionVariants(questionId)
 	answers := db.GetQuestionAnswers(questionId)
 	answersCount := db.GetQuestionAnswersCount(questionId)
@@ -135,8 +135,8 @@ func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, 
 	}
 	resultText := buffer.String()
 
-	for _, respondent := range(respondents) {
-		sendMessage(bot, respondent, resultText)
+	for _, chatId := range(chatIds) {
+		sendMessage(bot, chatId, resultText)
 	}
 }
 
@@ -160,8 +160,8 @@ func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId in
 
 	db.RemoveQuestionFromAllUsers(questionId)
 
-	respondents := db.GetQuestionRespondents(questionId)
-	sendResults(bot, db, questionId, respondents, t)
+	chatIds := db.GetAllUsersChatIds()
+	sendResults(bot, db, questionId, chatIds, t)
 }
 
 func processCompleteness(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {

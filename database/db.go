@@ -489,6 +489,45 @@ func (database *Database) GetQuestionRespondents(questionId int64) (respondents 
 	return
 }
 
+func (database *Database) GetReadyUsersChatIds() (users []int64) {
+	rows, err := database.conn.Query("SELECT chat_id FROM users WHERE is_ready=1")
+	if err != nil {
+		log.Fatal(err.Error())
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var chatId int64
+		err := rows.Scan(&chatId)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		users = append(users, chatId)
+	}
+
+	return
+}
+
+func (database *Database) GetAllUsersChatIds() (chatIds []int64) {
+	rows, err := database.conn.Query("SELECT chat_id FROM users")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var chatId int64
+		err := rows.Scan(&chatId)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		chatIds = append(chatIds, chatId)
+	}
+
+	return
+}
+
 func (database *Database) StartCreatingQuestion(author int64) {
 	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=0 WHERE id=%d", author))
 	database.createUniqueRecord("questions", fmt.Sprintf("NULL,%d,NULL,0,NULL,NULL,NULL", author))
@@ -551,26 +590,6 @@ func (database *Database) MarkUserReady(userId int64) {
 
 func (database *Database) UnmarkUserReady(userId int64) {
 	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK users SET is_ready=0 WHERE id=%d", userId))
-}
-
-func (database *Database) GetReadyUsersChatIds() (users []int64) {
-	rows, err := database.conn.Query("SELECT chat_id FROM users WHERE is_ready=1")
-	if err != nil {
-		log.Fatal(err.Error())
-		return
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var chatId int64
-		err := rows.Scan(&chatId)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		users = append(users, chatId)
-	}
-
-	return
 }
 
 func (database *Database) UnmarkUsersReady(chatIds []int64) {

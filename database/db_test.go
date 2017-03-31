@@ -353,7 +353,13 @@ func TestAnswerQuestion(t *testing.T) {
 		var chatId4 int64 = 921
 		userId := db.GetUserId(chatId4)
 		db.InitNewUserQuestions(userId)
+
 		assert.False(db.IsUserHasPendingQuestions(userId))
+
+		lastFinishedQuestions := db.GetLastFinishedQuestions(5)
+
+		assert.Equal(1, len(lastFinishedQuestions))
+
 	}
 }
 

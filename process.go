@@ -363,7 +363,7 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 				processNextQuestion(bot, db, userId, chatId)
 			}
 		case "/last_results":
-			questions := db.GetLastFinishedQuestions(userId, 10)
+			questions := db.GetLastFinishedQuestions(10)
 			for _, questionId := range questions {
 				sendResults(bot, db, questionId, []int64{chatId}, t)
 			}

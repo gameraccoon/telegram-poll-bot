@@ -306,6 +306,10 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 	if strings.HasPrefix(message, "/") {
 		switch message {
 		case "/add_question":
+			if db.IsUserBanned(userId) {
+				sendMessage(bot, chatId, t("warn_youre_banned"))
+				return
+			}
 			if !db.IsUserEditingQuestion(userId) {
 				db.StartCreatingQuestion(userId)
 				db.UnmarkUserReady(userId)
@@ -336,6 +340,15 @@ func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.D
 				sendMessage(bot, chatId, t("warn_not_editing_question"))
 			}
 		case "/commit_question":
+			if db.IsUserBanned(userId) {
+				sendMessage(bot, chatId, t("warn_youre_banned"))
+				if db.IsUserEditingQuestion(userId) {
+					questionId := db.GetUserEditingQuestion(userId)
+					db.DiscardQuestion(questionId)
+					processNextQuestion(bot, db, userId, chatId)
+				}
+				return
+			}
 			if db.IsUserEditingQuestion(userId) {
 				questionId := db.GetUserEditingQuestion(userId)
 				if db.IsQuestionReady(questionId) && db.GetQuestionVariantsCount(questionId) > 0 {

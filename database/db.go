@@ -38,9 +38,15 @@ func (database *Database) Connect(fileName string) error {
 	database.execQuery("PRAGMA foreign_keys = ON")
 
 	database.execQuery("CREATE TABLE IF NOT EXISTS" +
+		" global_vars(name TEXT PRIMARY KEY" +
+		",integer_value INTEGER" +
+		",string_value STRING);")
+
+	database.execQuery("CREATE TABLE IF NOT EXISTS" +
 		" users(id INTEGER NOT NULL PRIMARY KEY" +
 		",chat_id INTEGER UNIQUE NOT NULL" +
 		",is_ready INTEGER NOT NULL" +
+		",banned INTEGER" +
 		")")
 
 	database.execQuery("CREATE UNIQUE INDEX IF NOT EXISTS"+
@@ -776,3 +782,64 @@ func (database *Database) GetLastFinishedQuestions(count int) (questions []int64
 	return
 }
 
+func (database *Database) GetDatabaseVersion() (version string) {
+	rows, err := database.conn.Query("SELECT string_value FROM global_vars WHERE name=\"version\"")
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		err := rows.Scan(&version)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		version = minimalVersion
+	}
+
+	return
+}
+
+func (database *Database) SetDatabaseVersion(version string) {
+	database.execQuery("DELETE FROM global_vars WHERE name=\"version\"")
+	database.execQuery(fmt.Sprintf("INSERT INTO global_vars (name, string_value) VALUES (\"version\", \"%s\")", version))
+}
+
+func (database *Database) IsUserBanned(userId int64) (isBanned bool) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT COUNT(*) FROM users WHERE id=%d AND banned=1", userId))
+
+	if err != nil {
+		log.Fatal(err.Error())
+		return
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		var count int64
+		err := rows.Scan(&count)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		if count != 0 {
+			isBanned = true
+
+			if count != 1 {
+				log.Fatalf("Count should be 0 or 1: %d", count)
+			}
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No row found")
+	}
+
+	return
+}
+
+func (database *Database) BanUser(userId int64) {
+	database.execQuery(fmt.Sprintf("UPDATE users SET banned=1 where id=%d", userId))
+}

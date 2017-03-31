@@ -32,6 +32,7 @@
   "warn_wrong_answer" : { "other" : "Неправильный ответ" },
   "warn_bad_variants" : { "other" : "Неправильные варианты ответа. Попробуйте еще раз." },
   "warn_bad_rules" : { "other" : "Неправильные правила. Попробуйте еще раз." },
+  "warn_youre_banned" : { "other" : "Вам запрещено задавать вопросы." },
   "hours" : {
     "one" : "{{.Count}} час",
     "few" : "{{.Count}} часа",

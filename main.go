@@ -117,6 +117,8 @@ func main() {
 		log.Fatal("Can't connect database")
 	}
 
+	database.UpdateVersion(db)
+
 	userStates := make(map[int64]userState)
 
 	timers := make(map[int64]time.Time)

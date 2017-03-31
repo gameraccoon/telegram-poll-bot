@@ -363,3 +363,58 @@ func TestAnswerQuestion(t *testing.T) {
 	}
 }
 
+func TestDatabaseVersion(t *testing.T) {
+	assert := require.New(t)
+	db := createDbAndConnect(t)
+	defer clearDb()
+	if db == nil {
+		t.Fail()
+		return
+	}
+
+	{
+		version := db.GetDatabaseVersion()
+		assert.Equal("1.0", version)
+	}
+
+	db.SetDatabaseVersion("1.2")
+
+	{
+		version := db.GetDatabaseVersion()
+		assert.Equal("1.2", version)
+	}
+
+	db.SetDatabaseVersion("1.4")
+	db.Disconnect()
+
+	{
+		db = connectDb(t)
+		version := db.GetDatabaseVersion()
+		assert.Equal("1.4", version)
+		db.Disconnect()
+	}
+}
+
+func TestUserBans(t *testing.T) {
+	assert := require.New(t)
+	db := createDbAndConnect(t)
+	defer clearDb()
+	if db == nil {
+		t.Fail()
+		return
+	}
+	defer db.Disconnect()
+
+	var chatId1 int64 = 19
+	var chatId2 int64 = 29
+	userId1 := db.GetUserId(chatId1)
+	userId2 := db.GetUserId(chatId2)
+
+	assert.False(db.IsUserBanned(userId1))
+
+	db.BanUser(userId1)
+
+	assert.True(db.IsUserBanned(userId1))
+	assert.False(db.IsUserBanned(userId2))
+}
+

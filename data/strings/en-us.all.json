@@ -32,6 +32,7 @@
   "warn_wrong_answer" : { "other" : "Wrong answer" },
   "warn_bad_variants" : { "other" : "Bad variants. Try again." },
   "warn_bad_rules" : { "other" : "Bad rules. Try again." },
+  "warn_youre_banned" : { "other" : "You're banned from creating questions." },
   "hours" : {
     "one" : "{{.Count}} hour",
     "other" : "{{.Count}} hours"

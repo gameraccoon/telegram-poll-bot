@@ -843,3 +843,56 @@ func (database *Database) IsUserBanned(userId int64) (isBanned bool) {
 func (database *Database) BanUser(userId int64) {
 	database.execQuery(fmt.Sprintf("UPDATE users SET banned=1 where id=%d", userId))
 }
+
+func (database *Database) GetLastPublishedQuestions(count int64) (questions []int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM" +
+		"(SELECT q.id as id FROM questions as q" +
+		" WHERE q.status=1 OR q.status=2" +
+		" ORDER BY q.id DESC LIMIT %d) ORDER BY id ASC", count))
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var questionId int64
+		err := rows.Scan(&questionId)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		questions = append(questions, questionId)
+	}
+
+	return
+
+}
+
+func (database *Database) RemoveQuestion(questionId int64) {
+	database.execQuery(fmt.Sprintf("DELETE FROM questions WHERE id=%d", questionId))
+}
+
+func (database *Database) GetAuthor(questionId int64) (author int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT author FROM questions WHERE id=%d", questionId))
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		err := rows.Scan(&author)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		err = rows.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Fatal("No question found")
+	}
+
+	return
+}
+

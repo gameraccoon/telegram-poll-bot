@@ -11,14 +11,14 @@ import (
 	"time"
 )
 
-func setVariants(db *database.Database, questionId int64, message string) (ok bool) {
-	variants := strings.Split(message, "\n")
+func setVariants(db *database.Database, questionId int64, message *string) (ok bool) {
+	variants := strings.Split(*message, "\n")
 	db.SetQuestionVariants(questionId, variants)
 	return true
 }
 
-func setRules(db *database.Database, questionId int64, message string) (ok bool) {
-	rules := strings.Split(message, " ")
+func setRules(db *database.Database, questionId int64, message *string) (ok bool) {
+	rules := strings.Split(*message, " ")
 	if len(rules) == 0 {
 		return false
 	}
@@ -140,7 +140,7 @@ func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, 
 	}
 }
 
-func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
+func removeActiveQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
 	db.EndQuestion(questionId)
 
 	delete(timers, questionId)
@@ -159,7 +159,10 @@ func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId in
 	}
 
 	db.RemoveQuestionFromAllUsers(questionId)
+}
 
+func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
+	removeActiveQuestion(bot, db, questionId, timers, t)
 	chatIds := db.GetAllUsersChatIds()
 	sendResults(bot, db, questionId, chatIds, t)
 }
@@ -298,154 +301,213 @@ func sendEditingGuide(bot *tgbotapi.BotAPI, db *database.Database, userId int64,
 	sendMessage(bot, chatId, buffer.String())
 }
 
-func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, t i18n.TranslateFunc) {
-	message := update.Message.Text
-	chatId := update.Message.Chat.ID
+func isUserModerator(chatId int64, config *configuration) bool {
+	for _, moderator := range config.Moderators {
+		if chatId == moderator {
+			return true
+		}
+	}
+
+	return false
+}
+
+func processModeratorCommand(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, message *string, chatId int64, t i18n.TranslateFunc) {
+	if *message == "/m_last" {
+		questions := db.GetLastPublishedQuestions(15)
+		var buffer bytes.Buffer
+		for _, question := range questions {
+			buffer.WriteString(fmt.Sprintf("%d - %s\n", question, db.GetQuestionText(question)))
+		}
+		sendMessage(bot, chatId, buffer.String())
+	} else if strings.HasPrefix(*message, "/m_rm ") {
+		questionId, err := strconv.ParseInt((*message)[6:len(*message)], 10, 64)
+
+		if err != nil {
+			return
+		}
+
+		removeActiveQuestion(bot, db, questionId, timers, t)
+		db.RemoveQuestion(questionId)
+		sendMessage(bot, chatId, "removed")
+	} else if strings.HasPrefix(*message, "/m_ban ") {
+		questionId, err := strconv.ParseInt((*message)[7:len(*message)], 10, 64)
+
+		if err != nil {
+			return
+		}
+
+		author := db.GetAuthor(questionId)
+		db.BanUser(author)
+		sendMessage(bot, chatId, fmt.Sprintf("banned: %d", author))
+	} else if strings.HasPrefix(*message, "/m_send ") {
+		text := (*message)[8:len(*message)]
+		sendMessage(bot, chatId, text)
+	}
+}
+
+func processCommand(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, config *configuration, message *string, chatId int64, t i18n.TranslateFunc) {
 	userId := db.GetUserId(chatId)
 
-	if strings.HasPrefix(message, "/") {
-		switch message {
-		case "/add_question":
-			if db.IsUserBanned(userId) {
-				sendMessage(bot, chatId, t("warn_youre_banned"))
-				return
-			}
-			if !db.IsUserEditingQuestion(userId) {
-				db.StartCreatingQuestion(userId)
-				db.UnmarkUserReady(userId)
-				userStates[chatId] = WaitingText
-				sendMessage(bot, chatId, t("ask_question_text"))
-			} else {
-				sendEditingGuide(bot, db, userId, chatId, t)
-			}
-		case "/set_text":
-			if db.IsUserEditingQuestion(userId) {
-				userStates[chatId] = WaitingText
-				sendMessage(bot, chatId, t("ask_question_text"))
-			} else {
-				sendMessage(bot, chatId, t("warn_not_editing_question"))
-			}
-		case "/set_variants":
-			if db.IsUserEditingQuestion(userId) {
-				userStates[chatId] = WaitingVariants
-				sendMessage(bot, chatId, t("ask_variants"))
-			} else {
-				sendMessage(bot, chatId, t("warn_not_editing_question"))
-			}
-		case "/set_rules":
-			if db.IsUserEditingQuestion(userId) {
-				userStates[chatId] = WaitingRules
-				sendMessage(bot, chatId, t("ask_rules"))
-			} else {
-				sendMessage(bot, chatId, t("warn_not_editing_question"))
-			}
-		case "/commit_question":
-			if db.IsUserBanned(userId) {
-				sendMessage(bot, chatId, t("warn_youre_banned"))
-				if db.IsUserEditingQuestion(userId) {
-					questionId := db.GetUserEditingQuestion(userId)
-					db.DiscardQuestion(questionId)
-					processNextQuestion(bot, db, userId, chatId)
-				}
-				return
-			}
-			if db.IsUserEditingQuestion(userId) {
-				questionId := db.GetUserEditingQuestion(userId)
-				if db.IsQuestionReady(questionId) && db.GetQuestionVariantsCount(questionId) > 0 {
-					commitQuestion(bot, db, userId, chatId, questionId, timers, t)
-				} else {
-					sendMessage(bot, chatId, t("warn_question_not_ready"))
-				}
-			} else {
-				sendMessage(bot, chatId, t("warn_not_editing_question"))
-			}
-		case "/discard_question":
+	switch *message {
+	case "/add_question":
+		if db.IsUserBanned(userId) {
+			sendMessage(bot, chatId, t("warn_youre_banned"))
+			return
+		}
+		if !db.IsUserEditingQuestion(userId) {
+			db.StartCreatingQuestion(userId)
+			db.UnmarkUserReady(userId)
+			userStates[chatId] = WaitingText
+			sendMessage(bot, chatId, t("ask_question_text"))
+		} else {
+			sendEditingGuide(bot, db, userId, chatId, t)
+		}
+	case "/set_text":
+		if db.IsUserEditingQuestion(userId) {
+			userStates[chatId] = WaitingText
+			sendMessage(bot, chatId, t("ask_question_text"))
+		} else {
+			sendMessage(bot, chatId, t("warn_not_editing_question"))
+		}
+	case "/set_variants":
+		if db.IsUserEditingQuestion(userId) {
+			userStates[chatId] = WaitingVariants
+			sendMessage(bot, chatId, t("ask_variants"))
+		} else {
+			sendMessage(bot, chatId, t("warn_not_editing_question"))
+		}
+	case "/set_rules":
+		if db.IsUserEditingQuestion(userId) {
+			userStates[chatId] = WaitingRules
+			sendMessage(bot, chatId, t("ask_rules"))
+		} else {
+			sendMessage(bot, chatId, t("warn_not_editing_question"))
+		}
+	case "/commit_question":
+		if db.IsUserBanned(userId) {
+			sendMessage(bot, chatId, t("warn_youre_banned"))
 			if db.IsUserEditingQuestion(userId) {
 				questionId := db.GetUserEditingQuestion(userId)
 				db.DiscardQuestion(questionId)
-				sendMessage(bot, chatId, t("say_question_discarded"))
 				processNextQuestion(bot, db, userId, chatId)
+			}
+			return
+		}
+		if db.IsUserEditingQuestion(userId) {
+			questionId := db.GetUserEditingQuestion(userId)
+			if db.IsQuestionReady(questionId) && db.GetQuestionVariantsCount(questionId) > 0 {
+				commitQuestion(bot, db, userId, chatId, questionId, timers, t)
 			} else {
-				sendMessage(bot, chatId, t("warn_not_editing_question"))
+				sendMessage(bot, chatId, t("warn_question_not_ready"))
 			}
-		case "/start":
-			sendMessage(bot, chatId, t("hello_message"))
-			if !db.IsUserHasPendingQuestions(userId) {
-				db.InitNewUserQuestions(userId)
-				db.UnmarkUserReady(userId)
-				processNextQuestion(bot, db, userId, chatId)
-			}
-		case "/last_results":
-			questions := db.GetLastFinishedQuestions(10)
-			for _, questionId := range questions {
-				sendResults(bot, db, questionId, []int64{chatId}, t)
-			}
-		default:
-			if db.IsUserEditingQuestion(userId) {
+		} else {
+			sendMessage(bot, chatId, t("warn_not_editing_question"))
+		}
+	case "/discard_question":
+		if db.IsUserEditingQuestion(userId) {
+			questionId := db.GetUserEditingQuestion(userId)
+			db.DiscardQuestion(questionId)
+			sendMessage(bot, chatId, t("say_question_discarded"))
+			processNextQuestion(bot, db, userId, chatId)
+		} else {
+			sendMessage(bot, chatId, t("warn_not_editing_question"))
+		}
+	case "/start":
+		sendMessage(bot, chatId, t("hello_message"))
+		if !db.IsUserHasPendingQuestions(userId) {
+			db.InitNewUserQuestions(userId)
+			db.UnmarkUserReady(userId)
+			processNextQuestion(bot, db, userId, chatId)
+		}
+	case "/last_results":
+		questions := db.GetLastFinishedQuestions(10)
+		for _, questionId := range questions {
+			sendResults(bot, db, questionId, []int64{chatId}, t)
+		}
+	default:
+		if isUserModerator(chatId, config) {
+			processModeratorCommand(bot, db, userStates, timers, message, chatId, t)
+		}
+
+		if db.IsUserEditingQuestion(userId) {
+			sendMessage(bot, chatId, t("warn_unknown_command"))
+			sendEditingGuide(bot, db, userId, chatId, t)
+		} else {
+			if db.IsUserHasPendingQuestions(userId) {
+				parseAnswer(bot, db, chatId, userId, *message, timers, t)
+			} else {
 				sendMessage(bot, chatId, t("warn_unknown_command"))
-				sendEditingGuide(bot, db, userId, chatId, t)
-			} else {
-				if db.IsUserHasPendingQuestions(userId) {
-					parseAnswer(bot, db, chatId, userId, message, timers, t)
-				} else {
-					sendMessage(bot, chatId, t("warn_unknown_command"))
-				}
 			}
 		}
-	} else {
-		if userState, ok := userStates[chatId]; ok {
-			switch userState {
-			case WaitingText:
-				if db.IsUserEditingQuestion(userId) {
-					questionId := db.GetUserEditingQuestion(userId)
-					db.SetQuestionText(questionId, message)
-					sendMessage(bot, chatId, t("say_text_is_set"))
-					sendEditingGuide(bot, db, userId, chatId, t)
-					delete(userStates, chatId)
-				} else {
-					sendMessage(bot, chatId, t("warn_unknown_command"))
-					delete(userStates, chatId)
-				}
-			case WaitingVariants:
-				if db.IsUserEditingQuestion(userId) {
-					questionId := db.GetUserEditingQuestion(userId)
-					ok := setVariants(db, questionId, message)
-					if ok {
-						sendMessage(bot, chatId, t("say_variants_is_set"))
-						sendEditingGuide(bot, db, userId, chatId, t)
-						delete(userStates, chatId)
-					} else {
-						sendMessage(bot, chatId, t("warn_bad_variants"))
-					}
-				} else {
-					sendMessage(bot, chatId, t("warn_unknown_command"))
-					delete(userStates, chatId)
-				}
-			case WaitingRules:
-				if db.IsUserEditingQuestion(userId) {
-					questionId := db.GetUserEditingQuestion(userId)
-					ok := setRules(db, questionId, message)
-					if ok {
-						sendMessage(bot, chatId, t("say_rules_is_set"))
-						sendEditingGuide(bot, db, userId, chatId, t)
-						delete(userStates, chatId)
-					} else {
-						sendMessage(bot, chatId, t("warn_bad_rules"))
-					}
-				} else {
-					sendMessage(bot, chatId, t("warn_unknown_command"))
-					delete(userStates, chatId)
-				}
-			default:
+	}
+}
+
+func processText(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, message *string, chatId int64, t i18n.TranslateFunc) {
+	userId := db.GetUserId(chatId)
+
+	if userState, ok := userStates[chatId]; ok {
+		switch userState {
+		case WaitingText:
+			if db.IsUserEditingQuestion(userId) {
+				questionId := db.GetUserEditingQuestion(userId)
+				db.SetQuestionText(questionId, *message)
+				sendMessage(bot, chatId, t("say_text_is_set"))
+				sendEditingGuide(bot, db, userId, chatId, t)
+				delete(userStates, chatId)
+			} else {
 				sendMessage(bot, chatId, t("warn_unknown_command"))
 				delete(userStates, chatId)
 			}
-		} else {
-			sendMessage(bot, chatId, t("warn_unknown_command"))
+		case WaitingVariants:
 			if db.IsUserEditingQuestion(userId) {
-				sendEditingGuide(bot, db, userId, chatId, t)
+				questionId := db.GetUserEditingQuestion(userId)
+				ok := setVariants(db, questionId, message)
+				if ok {
+					sendMessage(bot, chatId, t("say_variants_is_set"))
+					sendEditingGuide(bot, db, userId, chatId, t)
+					delete(userStates, chatId)
+				} else {
+					sendMessage(bot, chatId, t("warn_bad_variants"))
+				}
+			} else {
+				sendMessage(bot, chatId, t("warn_unknown_command"))
+				delete(userStates, chatId)
 			}
+		case WaitingRules:
+			if db.IsUserEditingQuestion(userId) {
+				questionId := db.GetUserEditingQuestion(userId)
+				ok := setRules(db, questionId, message)
+				if ok {
+					sendMessage(bot, chatId, t("say_rules_is_set"))
+					sendEditingGuide(bot, db, userId, chatId, t)
+					delete(userStates, chatId)
+				} else {
+					sendMessage(bot, chatId, t("warn_bad_rules"))
+				}
+			} else {
+				sendMessage(bot, chatId, t("warn_unknown_command"))
+				delete(userStates, chatId)
+			}
+		default:
+			sendMessage(bot, chatId, t("warn_unknown_command"))
+			delete(userStates, chatId)
 		}
+	} else {
+		sendMessage(bot, chatId, t("warn_unknown_command"))
+		if db.IsUserEditingQuestion(userId) {
+			sendEditingGuide(bot, db, userId, chatId, t)
+		}
+	}
+}
+
+func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, config *configuration, t i18n.TranslateFunc) {
+	message := update.Message.Text
+	chatId := update.Message.Chat.ID
+
+	if strings.HasPrefix(message, "/") {
+		processCommand(bot, db, userStates, timers, config, &message, chatId, t)
+	} else {
+		processText(bot, db, userStates, &message, chatId, t)
 	}
 }
 

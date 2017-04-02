@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
 	"github.com/gameraccoon/telegram-poll-bot/database"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/nicksnyder/go-i18n/i18n"
@@ -18,16 +18,15 @@ func init() {
 	i18n.MustLoadTranslationFile("./data/strings/ru-ru.all.json")
 }
 
-func getFileStringContent(filePath string) string {
+func getFileStringContent(filePath string) (content string, err error) {
 	fileContent, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		fmt.Print(err)
+	if err == nil {
+		content = strings.TrimSpace(string(fileContent))
 	}
-
-	return strings.TrimSpace(string(fileContent))
+	return
 }
 
-func getApiToken() string {
+func getApiToken() (token string, err error) {
 	return getFileStringContent("./telegramApiToken.txt")
 }
 
@@ -45,6 +44,20 @@ const (
 	WaitingVariants
 	WaitingRules
 )
+
+type configuration struct {
+	Language   string
+	Moderators []int64
+}
+
+func loadConfig(path string) (config configuration, err error) {
+	jsonString, err := getFileStringContent(path)
+	if err == nil {
+		dec := json.NewDecoder(strings.NewReader(jsonString))
+		err = dec.Decode(&config)
+	}
+	return
+}
 
 func updateTimers(bot *tgbotapi.BotAPI, db *database.Database, t i18n.TranslateFunc, timers map[int64]time.Time, mutex *sync.Mutex) {
 	questions := db.GetActiveQuestions()
@@ -72,7 +85,7 @@ func updateTimers(bot *tgbotapi.BotAPI, db *database.Database, t i18n.TranslateF
 	}
 }
 
-func updateBot(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, t i18n.TranslateFunc, timers map[int64]time.Time, mutex *sync.Mutex) {
+func updateBot(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, t i18n.TranslateFunc, timers map[int64]time.Time, config *configuration, mutex *sync.Mutex) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
@@ -87,22 +100,30 @@ func updateBot(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64
 			continue
 		}
 		mutex.Lock()
-		processUpdate(&update, bot, db, userStates, timers, t)
+		processUpdate(&update, bot, db, userStates, timers, config, t)
 		mutex.Unlock()
 	}
 }
 
 func main() {
-	var apiToken string = getApiToken()
+	apiToken, err := getApiToken()
+	if err != nil {
+		log.Fatal(err.Error())
+	}
 
 	bot, err := tgbotapi.NewBotAPI(apiToken)
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err.Error())
 	}
 
 	//bot.Debug = true
 
-	t, err := i18n.Tfunc("ru-RU")
+	config, err := loadConfig("./config.json")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	t, err := i18n.Tfunc(config.Language)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -126,5 +147,5 @@ func main() {
 	mutex := &sync.Mutex{}
 
 	go updateTimers(bot, db, t, timers, mutex)
-	updateBot(bot, db, userStates, t, timers, mutex)
+	updateBot(bot, db, userStates, t, timers, &config, mutex)
 }

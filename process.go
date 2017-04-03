@@ -311,38 +311,45 @@ func isUserModerator(chatId int64, config *configuration) bool {
 	return false
 }
 
-func processModeratorCommand(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, message *string, chatId int64, t i18n.TranslateFunc) {
-	if *message == "/m_last" {
-		questions := db.GetLastPublishedQuestions(15)
-		var buffer bytes.Buffer
-		for _, question := range questions {
-			buffer.WriteString(fmt.Sprintf("%d - %s\n", question, db.GetQuestionText(question)))
+func processModeratorCommand(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, message *string, chatId int64, config *configuration, t i18n.TranslateFunc) (isProcessed bool) {
+	if isUserModerator(chatId, config) {
+		if *message == "/m_last" {
+			questions := db.GetLastPublishedQuestions(15)
+			var buffer bytes.Buffer
+			for _, question := range questions {
+				buffer.WriteString(fmt.Sprintf("%d - %s\n", question, db.GetQuestionText(question)))
+			}
+			sendMessage(bot, chatId, buffer.String())
+			isProcessed = true
+		} else if strings.HasPrefix(*message, "/m_rm ") {
+			questionId, err := strconv.ParseInt((*message)[6:len(*message)], 10, 64)
+
+			if err != nil {
+				return
+			}
+
+			removeActiveQuestion(bot, db, questionId, timers, t)
+			db.RemoveQuestion(questionId)
+			sendMessage(bot, chatId, "removed")
+			isProcessed = true
+		} else if strings.HasPrefix(*message, "/m_ban ") {
+			questionId, err := strconv.ParseInt((*message)[7:len(*message)], 10, 64)
+
+			if err != nil {
+				return
+			}
+
+			author := db.GetAuthor(questionId)
+			db.BanUser(author)
+			sendMessage(bot, chatId, fmt.Sprintf("banned: %d", author))
+			isProcessed = true
+		} else if strings.HasPrefix(*message, "/m_send ") {
+			text := (*message)[8:len(*message)]
+			sendMessage(bot, chatId, text)
+			isProcessed = true
 		}
-		sendMessage(bot, chatId, buffer.String())
-	} else if strings.HasPrefix(*message, "/m_rm ") {
-		questionId, err := strconv.ParseInt((*message)[6:len(*message)], 10, 64)
-
-		if err != nil {
-			return
-		}
-
-		removeActiveQuestion(bot, db, questionId, timers, t)
-		db.RemoveQuestion(questionId)
-		sendMessage(bot, chatId, "removed")
-	} else if strings.HasPrefix(*message, "/m_ban ") {
-		questionId, err := strconv.ParseInt((*message)[7:len(*message)], 10, 64)
-
-		if err != nil {
-			return
-		}
-
-		author := db.GetAuthor(questionId)
-		db.BanUser(author)
-		sendMessage(bot, chatId, fmt.Sprintf("banned: %d", author))
-	} else if strings.HasPrefix(*message, "/m_send ") {
-		text := (*message)[8:len(*message)]
-		sendMessage(bot, chatId, text)
 	}
+	return
 }
 
 func processCommand(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, config *configuration, message *string, chatId int64, t i18n.TranslateFunc) {
@@ -425,18 +432,18 @@ func processCommand(bot *tgbotapi.BotAPI, db *database.Database, userStates map[
 			sendResults(bot, db, questionId, []int64{chatId}, t)
 		}
 	default:
-		if isUserModerator(chatId, config) {
-			processModeratorCommand(bot, db, userStates, timers, message, chatId, t)
-		}
+		isProcessed := processModeratorCommand(bot, db, userStates, timers, message, chatId, config, t)
 
-		if db.IsUserEditingQuestion(userId) {
-			sendMessage(bot, chatId, t("warn_unknown_command"))
-			sendEditingGuide(bot, db, userId, chatId, t)
-		} else {
-			if db.IsUserHasPendingQuestions(userId) {
-				parseAnswer(bot, db, chatId, userId, *message, timers, t)
-			} else {
+		if !isProcessed {
+			if db.IsUserEditingQuestion(userId) {
 				sendMessage(bot, chatId, t("warn_unknown_command"))
+				sendEditingGuide(bot, db, userId, chatId, t)
+			} else {
+				if db.IsUserHasPendingQuestions(userId) {
+					parseAnswer(bot, db, chatId, userId, *message, timers, t)
+				} else {
+					sendMessage(bot, chatId, t("warn_unknown_command"))
+				}
 			}
 		}
 	}

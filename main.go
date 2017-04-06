@@ -48,6 +48,7 @@ const (
 type configuration struct {
 	Language   string
 	Moderators []int64
+	ExtendedLog bool
 }
 
 func loadConfig(path string) (config configuration, err error) {
@@ -116,12 +117,12 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	//bot.Debug = true
-
 	config, err := loadConfig("./config.json")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
+	bot.Debug = config.ExtendedLog
 
 	t, err := i18n.Tfunc(config.Language)
 	if err != nil {

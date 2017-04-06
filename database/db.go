@@ -462,7 +462,7 @@ func (database *Database) SetQuestionVariants(questionId int64, variants []strin
 		}
 
 		query := fmt.Sprintf("INSERT INTO variants (question_id, text, votes_count, index_number) VALUES %s", buffer.String())
-	database.execQuery(query)
+		database.execQuery(query)
 	}
 }
 

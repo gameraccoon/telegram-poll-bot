@@ -194,7 +194,7 @@ func parseAnswer(data *processData) {
 	questionId := data.static.db.GetUserNextQuestion(data.userId)
 	variantsCount := data.static.db.GetQuestionVariantsCount(questionId)
 
-	if data.command == "/skip" {
+	if data.command == "skip" {
 		data.static.db.RemoveUserPendingQuestion(data.userId, questionId)
 		sendMessage(data.static.bot, data.chatId, data.static.trans("say_question_skipped"))
 
@@ -204,12 +204,12 @@ func parseAnswer(data *processData) {
 		return
 	}
 
-	if !strings.HasPrefix(data.command, "/ans") {
+	if !strings.HasPrefix(data.command, "ans") {
 		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_wrong_answer"))
 		return
 	}
 
-	answer, err := strconv.ParseInt(data.command[4:len(data.command)], 10, 64)
+	answer, err := strconv.ParseInt(data.command[3:len(data.command)], 10, 64)
 	if err != nil {
 		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_wrong_answer"))
 		return

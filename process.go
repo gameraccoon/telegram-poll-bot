@@ -301,6 +301,220 @@ func sendEditingGuide(data *processData) {
 	sendMessage(data.static.bot, data.chatId, buffer.String())
 }
 
+func addQuestionCommand(data *processData) {
+	if data.static.db.IsUserBanned(data.userId) {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_youre_banned"))
+		return
+	}
+	if !data.static.db.IsUserEditingQuestion(data.userId) {
+		data.static.db.StartCreatingQuestion(data.userId)
+		data.static.db.UnmarkUserReady(data.userId)
+		data.static.userStates[data.chatId] = WaitingText
+		sendMessage(data.static.bot, data.chatId, data.static.trans("ask_question_text"))
+	} else {
+		sendEditingGuide(data)
+	}
+}
+
+func setTextCommand(data *processData) {
+	if data.static.db.IsUserEditingQuestion(data.userId) {
+		data.static.userStates[data.chatId] = WaitingText
+		sendMessage(data.static.bot, data.chatId, data.static.trans("ask_question_text"))
+	} else {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
+	}
+}
+
+func setVariantsCommand(data *processData) {
+	if data.static.db.IsUserEditingQuestion(data.userId) {
+		data.static.userStates[data.chatId] = WaitingVariants
+		sendMessage(data.static.bot, data.chatId, data.static.trans("ask_variants"))
+	} else {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
+	}
+}
+
+func setRulesCommand(data *processData) {
+	if data.static.db.IsUserEditingQuestion(data.userId) {
+		data.static.userStates[data.chatId] = WaitingRules
+		sendMessage(data.static.bot, data.chatId, data.static.trans("ask_rules"))
+	} else {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
+	}
+}
+
+func commitQuestionCommand(data *processData) {
+	if data.static.db.IsUserBanned(data.userId) {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_youre_banned"))
+		if data.static.db.IsUserEditingQuestion(data.userId) {
+			questionId := data.static.db.GetUserEditingQuestion(data.userId)
+			data.static.db.DiscardQuestion(questionId)
+			processNextQuestion(data)
+		}
+		return
+	}
+	if data.static.db.IsUserEditingQuestion(data.userId) {
+		questionId := data.static.db.GetUserEditingQuestion(data.userId)
+		if data.static.db.IsQuestionReady(questionId) && data.static.db.GetQuestionVariantsCount(questionId) > 0 {
+			commitQuestion(data, questionId)
+		} else {
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_question_not_ready"))
+		}
+	} else {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
+	}
+}
+
+func discardQuestionCommand(data *processData) {
+	if data.static.db.IsUserEditingQuestion(data.userId) {
+		questionId := data.static.db.GetUserEditingQuestion(data.userId)
+		data.static.db.DiscardQuestion(questionId)
+		sendMessage(data.static.bot, data.chatId, data.static.trans("say_question_discarded"))
+		processNextQuestion(data)
+	} else {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
+	}
+}
+
+func startCommand(data *processData) {
+	sendMessage(data.static.bot, data.chatId, data.static.trans("hello_message"))
+	if !data.static.db.IsUserHasPendingQuestions(data.userId) {
+		data.static.db.InitNewUserQuestions(data.userId)
+		data.static.db.UnmarkUserReady(data.userId)
+		processNextQuestion(data)
+	}
+}
+
+func lastResultsCommand(data *processData) {
+	questions := data.static.db.GetLastFinishedQuestions(10)
+	for _, questionId := range questions {
+		sendResults(data.static, questionId, []int64{data.chatId})
+	}
+}
+
+func moderatorListCommand(data *processData) {
+	questions := data.static.db.GetLastPublishedQuestions(15)
+	var buffer bytes.Buffer
+	for _, question := range questions {
+		buffer.WriteString(fmt.Sprintf("%d - %s\n", question, data.static.db.GetQuestionText(question)))
+	}
+	sendMessage(data.static.bot, data.chatId, buffer.String())
+}
+
+func moderatorBanCommand(data *processData) {
+	questionId, err := strconv.ParseInt(data.command, 10, 64)
+
+	if err != nil {
+		return
+	}
+
+	author := data.static.db.GetAuthor(questionId)
+	data.static.db.BanUser(author)
+	sendMessage(data.static.bot, data.chatId, fmt.Sprintf("banned: %d", author))
+}
+
+func moderatorRemoveCommand(data *processData) {
+	questionId, err := strconv.ParseInt(data.message, 10, 64)
+
+	if err != nil {
+		return
+	}
+
+	removeActiveQuestion(data.static, questionId)
+	data.static.db.RemoveQuestion(questionId)
+	sendMessage(data.static.bot, data.chatId, "removed")
+}
+
+func moderatorSendCommand(data *processData) {
+	sendMessage(data.static.bot, data.chatId, data.message)
+}
+
+type staticProccessStructs struct {
+	bot                 *tgbotapi.BotAPI
+	db                  *database.Database
+	userStates          map[int64]userState
+	timers              map[int64]time.Time
+	config              *configuration
+	trans               i18n.TranslateFunc
+	processors          map[string]func(*processData)
+	moderatorProcessors map[string]func(*processData)
+}
+
+type processData struct {
+	static  *staticProccessStructs
+	command string // first part of command without /
+	message string // parameters of command or plain message
+	chatId  int64
+	userId  int64
+}
+
+func makeUserCommandProcessors() map[string]func(*processData) {
+	return map[string]func(*processData){
+		"start":            startCommand,
+		"add_question":     addQuestionCommand,
+		"set_text":         setTextCommand,
+		"set_variants":     setVariantsCommand,
+		"set_rules":        setRulesCommand,
+		"commit_question":  commitQuestionCommand,
+		"discard_question": discardQuestionCommand,
+		"last_results":     lastResultsCommand,
+	}
+}
+
+func makeModeratorCommandProcessors() map[string]func(*processData) {
+	return map[string]func(*processData){
+		"m_list": moderatorListCommand,
+		"m_ban":  moderatorBanCommand,
+		"m_rm":   moderatorRemoveCommand,
+		"m_send": moderatorSendCommand,
+	}
+}
+
+func processAnswer(data *processData) bool {
+	if data.static.db.IsUserHasPendingQuestions(data.userId) {
+		parseAnswer(data)
+		return true
+	}
+	return false
+}
+
+func processCommandByProcessors(data *processData, processors map[string]func(*processData)) bool {
+	processor, ok := processors[data.command]
+	if ok {
+		processor(data)
+	}
+
+	return ok
+}
+
+func processCommand(data *processData) {
+	if strings.HasPrefix(data.command, "m_") && isUserModerator(data.chatId, data.static.config) {
+		processed := processCommandByProcessors(data, data.static.moderatorProcessors)
+		if processed {
+			return
+		}
+	}
+
+	processed := processCommandByProcessors(data, data.static.processors)
+	if processed {
+		return
+	}
+
+	isEditingQuestion := data.static.db.IsUserEditingQuestion(data.userId)
+	if !isEditingQuestion {
+		processed = processAnswer(data)
+		if processed {
+			return
+		}
+	}
+
+	// if we here it means that no command was processed
+	sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
+	if isEditingQuestion {
+		sendEditingGuide(data)
+	}
+}
+
 func isUserModerator(chatId int64, config *configuration) bool {
 	for _, moderator := range config.Moderators {
 		if chatId == moderator {
@@ -309,170 +523,6 @@ func isUserModerator(chatId int64, config *configuration) bool {
 	}
 
 	return false
-}
-
-func processModeratorCommand(data *processData) (isProcessed bool) {
-	if isUserModerator(data.chatId, data.static.config) {
-		if data.command == "/m_last" {
-			questions := data.static.db.GetLastPublishedQuestions(15)
-			var buffer bytes.Buffer
-			for _, question := range questions {
-				buffer.WriteString(fmt.Sprintf("%d - %s\n", question, data.static.db.GetQuestionText(question)))
-			}
-			sendMessage(data.static.bot, data.chatId, buffer.String())
-			isProcessed = true
-		} else if data.command == "/m_rm" {
-			questionId, err := strconv.ParseInt(data.message, 10, 64)
-
-			if err != nil {
-				return
-			}
-
-			removeActiveQuestion(data.static, questionId)
-			data.static.db.RemoveQuestion(questionId)
-			sendMessage(data.static.bot, data.chatId, "removed")
-			isProcessed = true
-		} else if data.command == "/m_ban" {
-			questionId, err := strconv.ParseInt(data.command, 10, 64)
-
-			if err != nil {
-				return
-			}
-
-			author := data.static.db.GetAuthor(questionId)
-			data.static.db.BanUser(author)
-			sendMessage(data.static.bot, data.chatId, fmt.Sprintf("banned: %d", author))
-			isProcessed = true
-		} else if data.command == "/m_send" {
-			sendMessage(data.static.bot, data.chatId, data.message)
-			isProcessed = true
-		}
-	}
-	return
-}
-
-type staticProccessStructs struct {
-	bot *tgbotapi.BotAPI
-	db *database.Database
-	userStates map[int64]userState
-	timers map[int64]time.Time
-	config *configuration
-	trans i18n.TranslateFunc
-}
-
-type processData struct {
-	static *staticProccessStructs
-	command string // first part of message starting with /
-	message string // parameters of command or plain message
-	chatId int64
-	userId int64
-}
-
-type commandProcessor struct {
-}
-
-func makeCommandProcessors() []func(processData)bool {
-	processors := []func(processData)bool{
-		func(processData)bool{
-			return false;
-		},
-	}
-	return processors
-}
-
-func processCommand(data *processData) {
-	switch data.command {
-	case "/add_question":
-		if data.static.db.IsUserBanned(data.userId) {
-			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_youre_banned"))
-			return
-		}
-		if !data.static.db.IsUserEditingQuestion(data.userId) {
-			data.static.db.StartCreatingQuestion(data.userId)
-			data.static.db.UnmarkUserReady(data.userId)
-			data.static.userStates[data.chatId] = WaitingText
-			sendMessage(data.static.bot, data.chatId, data.static.trans("ask_question_text"))
-		} else {
-			sendEditingGuide(data)
-		}
-	case "/set_text":
-		if data.static.db.IsUserEditingQuestion(data.userId) {
-			data.static.userStates[data.chatId] = WaitingText
-			sendMessage(data.static.bot, data.chatId, data.static.trans("ask_question_text"))
-		} else {
-			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
-		}
-	case "/set_variants":
-		if data.static.db.IsUserEditingQuestion(data.userId) {
-			data.static.userStates[data.chatId] = WaitingVariants
-			sendMessage(data.static.bot, data.chatId, data.static.trans("ask_variants"))
-		} else {
-			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
-		}
-	case "/set_rules":
-		if data.static.db.IsUserEditingQuestion(data.userId) {
-			data.static.userStates[data.chatId] = WaitingRules
-			sendMessage(data.static.bot, data.chatId, data.static.trans("ask_rules"))
-		} else {
-			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
-		}
-	case "/commit_question":
-		if data.static.db.IsUserBanned(data.userId) {
-			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_youre_banned"))
-			if data.static.db.IsUserEditingQuestion(data.userId) {
-				questionId := data.static.db.GetUserEditingQuestion(data.userId)
-				data.static.db.DiscardQuestion(questionId)
-				processNextQuestion(data)
-			}
-			return
-		}
-		if data.static.db.IsUserEditingQuestion(data.userId) {
-			questionId := data.static.db.GetUserEditingQuestion(data.userId)
-			if data.static.db.IsQuestionReady(questionId) && data.static.db.GetQuestionVariantsCount(questionId) > 0 {
-				commitQuestion(data, questionId)
-			} else {
-				sendMessage(data.static.bot, data.chatId, data.static.trans("warn_question_not_ready"))
-			}
-		} else {
-			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
-		}
-	case "/discard_question":
-		if data.static.db.IsUserEditingQuestion(data.userId) {
-			questionId := data.static.db.GetUserEditingQuestion(data.userId)
-			data.static.db.DiscardQuestion(questionId)
-			sendMessage(data.static.bot, data.chatId, data.static.trans("say_question_discarded"))
-			processNextQuestion(data)
-		} else {
-			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
-		}
-	case "/start":
-		sendMessage(data.static.bot, data.chatId, data.static.trans("hello_message"))
-		if !data.static.db.IsUserHasPendingQuestions(data.userId) {
-			data.static.db.InitNewUserQuestions(data.userId)
-			data.static.db.UnmarkUserReady(data.userId)
-			processNextQuestion(data)
-		}
-	case "/last_results":
-		questions := data.static.db.GetLastFinishedQuestions(10)
-		for _, questionId := range questions {
-			sendResults(data.static, questionId, []int64{data.chatId})
-		}
-	default:
-		isProcessed := processModeratorCommand(data)
-
-		if !isProcessed {
-			if data.static.db.IsUserEditingQuestion(data.userId) {
-				sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
-				sendEditingGuide(data)
-			} else {
-				if data.static.db.IsUserHasPendingQuestions(data.userId) {
-					parseAnswer(data)
-				} else {
-					sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
-				}
-			}
-		}
-	}
 }
 
 func processText(data *processData) {
@@ -533,17 +583,18 @@ func processText(data *processData) {
 
 func processUpdate(update *tgbotapi.Update, staticData *staticProccessStructs) {
 	data := processData{
-		static : staticData,
-		chatId : update.Message.Chat.ID,
-		userId : staticData.db.GetUserId(update.Message.Chat.ID),
+		static: staticData,
+		chatId: update.Message.Chat.ID,
+		userId: staticData.db.GetUserId(update.Message.Chat.ID),
 	}
 
 	message := update.Message.Text
 
 	if strings.HasPrefix(message, "/") {
 		commandLen := strings.Index(message, " ")
-		data.command = message[:commandLen]
+		data.command = message[1:commandLen]
 		data.message = message[commandLen+1:]
+
 		processCommand(&data)
 	} else {
 		data.message = message
@@ -554,4 +605,3 @@ func processUpdate(update *tgbotapi.Update, staticData *staticProccessStructs) {
 func processTimer(staticData *staticProccessStructs, questionId int64) {
 	processCompleteness(staticData, questionId)
 }
-

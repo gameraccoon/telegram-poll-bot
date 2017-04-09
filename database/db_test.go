@@ -418,3 +418,28 @@ func TestUserBans(t *testing.T) {
 	assert.False(db.IsUserBanned(userId2))
 }
 
+func TestSanitizeString(t *testing.T) {
+	assert := require.New(t)
+	db := createDbAndConnect(t)
+	defer clearDb()
+	if db == nil {
+		t.Fail()
+		return
+	}
+	defer db.Disconnect()
+
+	testText := "text'test''test\"test\\"
+
+	db.SetDatabaseVersion(testText)
+
+	userId := db.GetUserId(int64(123))
+	db.StartCreatingQuestion(userId)
+	questionId := db.GetUserEditingQuestion(userId)
+	db.SetQuestionText(questionId, testText)
+	db.SetQuestionVariants(questionId, []string{testText})
+
+	assert.Equal(testText, db.GetQuestionText(questionId))
+	variants := db.GetQuestionVariants(questionId)
+	assert.Equal(testText, variants[0])
+}
+

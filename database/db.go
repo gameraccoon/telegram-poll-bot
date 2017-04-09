@@ -6,6 +6,7 @@ import (
 	"log"
 	"fmt"
 	"bytes"
+	"strings"
 	"strconv"
 )
 
@@ -16,6 +17,12 @@ func init() {
 type Database struct {
 	// connection
 	conn *sql.DB
+}
+
+func sanitizeString(input string) (result string) {
+	result = input
+	result = strings.Replace(result, "'", "''", -1)
+	return
 }
 
 func (database *Database) execQuery(query string) {
@@ -443,19 +450,19 @@ func (database *Database) SetQuestionRules(questionId int64, minVotes int, maxVo
 func (database *Database) SetQuestionText(questionId int64, text string) {
 	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET" +
 		" text='%s'" +
-		" WHERE id=%d", text, questionId))
+		" WHERE id=%d", sanitizeString(text), questionId))
 }
 
 func (database *Database) SetQuestionVariants(questionId int64, variants []string) {
 	// delete the old variants
-	database.execQuery(fmt.Sprintf("DELETE FROM variants WHERE question_id=%d",questionId))
+	database.execQuery(fmt.Sprintf("DELETE FROM variants WHERE question_id=%d", questionId))
 
 	// add the new ones
 	var buffer bytes.Buffer
 	count := len(variants)
 	if count > 0 {
 		for i, variant := range(variants) {
-			buffer.WriteString(fmt.Sprintf("(%d,'%s',0,%d)", questionId, variant, i))
+			buffer.WriteString(fmt.Sprintf("(%d,'%s',0,%d)", questionId, sanitizeString(variant), i))
 			if i < count - 1 {
 				buffer.WriteString(",")
 			}
@@ -803,8 +810,8 @@ func (database *Database) GetDatabaseVersion() (version string) {
 }
 
 func (database *Database) SetDatabaseVersion(version string) {
-	database.execQuery("DELETE FROM global_vars WHERE name=\"version\"")
-	database.execQuery(fmt.Sprintf("INSERT INTO global_vars (name, string_value) VALUES (\"version\", \"%s\")", version))
+	database.execQuery("DELETE FROM global_vars WHERE name='version'")
+	database.execQuery(fmt.Sprintf("INSERT INTO global_vars (name, string_value) VALUES ('version', '%s')", sanitizeString(version)))
 }
 
 func (database *Database) IsUserBanned(userId int64) (isBanned bool) {

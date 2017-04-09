@@ -46,8 +46,8 @@ const (
 )
 
 type configuration struct {
-	Language   string
-	Moderators []int64
+	Language    string
+	Moderators  []int64
 	ExtendedLog bool
 }
 
@@ -60,14 +60,14 @@ func loadConfig(path string) (config configuration, err error) {
 	return
 }
 
-func updateTimers(bot *tgbotapi.BotAPI, db *database.Database, t i18n.TranslateFunc, timers map[int64]time.Time, mutex *sync.Mutex) {
-	questions := db.GetActiveQuestions()
+func updateTimers(staticData *staticProccessStructs, mutex *sync.Mutex) {
+	questions := staticData.db.GetActiveQuestions()
 
 	mutex.Lock()
 	for _, questionId := range questions {
-		_, _, endTime := db.GetQuestionRules(questionId)
+		_, _, endTime := staticData.db.GetQuestionRules(questionId)
 		if endTime > 0 {
-			timers[questionId] = time.Unix(endTime, 0)
+			staticData.timers[questionId] = time.Unix(endTime, 0)
 		}
 	}
 	mutex.Unlock()
@@ -75,10 +75,10 @@ func updateTimers(bot *tgbotapi.BotAPI, db *database.Database, t i18n.TranslateF
 	for {
 		currentTime := time.Now()
 		mutex.Lock()
-		for questionId, endTime := range timers {
+		for questionId, endTime := range staticData.timers {
 			if endTime.Sub(currentTime).Seconds() < 0.0 {
-				delete(timers, questionId)
-				processTimer(bot, db, questionId, timers, t)
+				delete(staticData.timers, questionId)
+				processTimer(staticData, questionId)
 			}
 		}
 		mutex.Unlock()
@@ -86,11 +86,11 @@ func updateTimers(bot *tgbotapi.BotAPI, db *database.Database, t i18n.TranslateF
 	}
 }
 
-func updateBot(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, t i18n.TranslateFunc, timers map[int64]time.Time, config *configuration, mutex *sync.Mutex) {
+func updateBot(staticData *staticProccessStructs, mutex *sync.Mutex) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
-	updates, err := bot.GetUpdatesChan(u)
+	updates, err := staticData.bot.GetUpdatesChan(u)
 
 	if err != nil {
 		log.Fatal(err.Error())
@@ -101,7 +101,7 @@ func updateBot(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64
 			continue
 		}
 		mutex.Lock()
-		processUpdate(&update, bot, db, userStates, timers, config, t)
+		processUpdate(&update, staticData)
 		mutex.Unlock()
 	}
 }
@@ -147,6 +147,15 @@ func main() {
 
 	mutex := &sync.Mutex{}
 
-	go updateTimers(bot, db, t, timers, mutex)
-	updateBot(bot, db, userStates, t, timers, &config, mutex)
+	staticData := &staticProccessStructs{
+		bot:        bot,
+		db:         db,
+		config:     &config,
+		timers:     timers,
+		trans:      t,
+		userStates: userStates,
+	}
+
+	go updateTimers(staticData, mutex)
+	updateBot(staticData, mutex)
 }

@@ -94,41 +94,41 @@ func sendQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64,
 	db.UnmarkUsersReady(usersChatIds)
 }
 
-func processNextQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64) {
-	if db.IsUserHasPendingQuestions(userId) {
-		nextQuestion := db.GetUserNextQuestion(userId)
-		sendQuestion(bot, db, nextQuestion, []int64{chatId})
+func processNextQuestion(data *processData) {
+	if data.static.db.IsUserHasPendingQuestions(data.userId) {
+		nextQuestion := data.static.db.GetUserNextQuestion(data.userId)
+		sendQuestion(data.static.bot, data.static.db, nextQuestion, []int64{data.chatId})
 	} else {
-		db.MarkUserReady(userId)
+		data.static.db.MarkUserReady(data.userId)
 	}
 }
 
-func commitQuestion(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
-	db.CommitQuestion(questionId)
-	sendMessage(bot, chatId, t("say_question_commited"))
+func commitQuestion(data *processData, questionId int64) {
+	data.static.db.CommitQuestion(questionId)
+	sendMessage(data.static.bot, data.chatId, data.static.trans("say_question_commited"))
 
-	min_answers, max_answers, durationTime := db.GetQuestionRules(questionId)
+	min_answers, max_answers, durationTime := data.static.db.GetQuestionRules(questionId)
 
 	endTime := time.Now().Add(time.Duration(durationTime) * time.Hour)
-	timers[questionId] = endTime
+	data.static.timers[questionId] = endTime
 
-	db.SetQuestionRules(questionId, min_answers, max_answers, endTime.Unix())
+	data.static.db.SetQuestionRules(questionId, min_answers, max_answers, endTime.Unix())
 
-	processNextQuestion(bot, db, userId, chatId)
+	processNextQuestion(data)
 
-	users := db.GetReadyUsersChatIds()
+	users := data.static.db.GetReadyUsersChatIds()
 
-	sendQuestion(bot, db, questionId, users)
+	sendQuestion(data.static.bot, data.static.db, questionId, users)
 }
 
-func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, chatIds []int64, t i18n.TranslateFunc) {
-	variants := db.GetQuestionVariants(questionId)
-	answers := db.GetQuestionAnswers(questionId)
-	answersCount := db.GetQuestionAnswersCount(questionId)
+func sendResults(staticData *staticProccessStructs, questionId int64, chatIds []int64) {
+	variants := staticData.db.GetQuestionVariants(questionId)
+	answers := staticData.db.GetQuestionAnswers(questionId)
+	answersCount := staticData.db.GetQuestionAnswersCount(questionId)
 
 	var buffer bytes.Buffer
-	buffer.WriteString(t("results_header"))
-	buffer.WriteString(fmt.Sprintf("<i>%s</i>", db.GetQuestionText(questionId)))
+	buffer.WriteString(staticData.trans("results_header"))
+	buffer.WriteString(fmt.Sprintf("<i>%s</i>", staticData.db.GetQuestionText(questionId)))
 
 	for i, variant := range variants {
 		buffer.WriteString(fmt.Sprintf("\n%s - %d (%d%%)", variant, answers[i], int64(100.0*float32(answers[i])/float32(answersCount))))
@@ -136,97 +136,97 @@ func sendResults(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, 
 	resultText := buffer.String()
 
 	for _, chatId := range chatIds {
-		sendMessage(bot, chatId, resultText)
+		sendMessage(staticData.bot, chatId, resultText)
 	}
 }
 
-func removeActiveQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
-	db.EndQuestion(questionId)
+func removeActiveQuestion(staticData *staticProccessStructs, questionId int64) {
+	staticData.db.EndQuestion(questionId)
 
-	delete(timers, questionId)
+	delete(staticData.timers, questionId)
 
-	users := db.GetUsersAnsweringQuestionNow(questionId)
+	users := staticData.db.GetUsersAnsweringQuestionNow(questionId)
 	for _, user := range users {
-		db.RemoveUserPendingQuestion(user, questionId)
-		chatId := db.GetUserChatId(user)
-		sendMessage(bot, db.GetUserChatId(user), t("say_question_outdated"))
+		staticData.db.RemoveUserPendingQuestion(user, questionId)
+		chatId := staticData.db.GetUserChatId(user)
+		sendMessage(staticData.bot, staticData.db.GetUserChatId(user), staticData.trans("say_question_outdated"))
 
-		if db.IsUserHasPendingQuestions(user) {
-			sendQuestion(bot, db, db.GetUserNextQuestion(user), []int64{chatId})
+		if staticData.db.IsUserHasPendingQuestions(user) {
+			sendQuestion(staticData.bot, staticData.db, staticData.db.GetUserNextQuestion(user), []int64{chatId})
 		} else {
-			db.MarkUserReady(user)
+			staticData.db.MarkUserReady(user)
 		}
 	}
 
-	db.RemoveQuestionFromAllUsers(questionId)
+	staticData.db.RemoveQuestionFromAllUsers(questionId)
 }
 
-func completeQuestion(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
-	removeActiveQuestion(bot, db, questionId, timers, t)
-	chatIds := db.GetAllUsersChatIds()
-	sendResults(bot, db, questionId, chatIds, t)
+func completeQuestion(staticData *staticProccessStructs, questionId int64) {
+	removeActiveQuestion(staticData, questionId)
+	chatIds := staticData.db.GetAllUsersChatIds()
+	sendResults(staticData, questionId, chatIds)
 }
 
-func processCompleteness(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
-	min_answers, max_answers, _ := db.GetQuestionRules(questionId)
+func processCompleteness(staticData *staticProccessStructs, questionId int64) {
+	min_answers, max_answers, _ := staticData.db.GetQuestionRules(questionId)
 
-	answersCount := db.GetQuestionAnswersCount(questionId)
+	answersCount := staticData.db.GetQuestionAnswersCount(questionId)
 
 	if answersCount >= max_answers && max_answers > 0 {
-		completeQuestion(bot, db, questionId, timers, t)
+		completeQuestion(staticData, questionId)
 		return
 	}
 
-	if db.GetQuestionPendingCount(questionId) == 0 {
-		completeQuestion(bot, db, questionId, timers, t)
+	if staticData.db.GetQuestionPendingCount(questionId) == 0 {
+		completeQuestion(staticData, questionId)
 		return
 	}
 
-	if _, ok := timers[questionId]; !ok {
+	if _, ok := staticData.timers[questionId]; !ok {
 		if answersCount >= min_answers {
-			completeQuestion(bot, db, questionId, timers, t)
+			completeQuestion(staticData, questionId)
 			return
 		}
 	}
 }
 
-func parseAnswer(bot *tgbotapi.BotAPI, db *database.Database, chatId int64, userId int64, message string, timers map[int64]time.Time, t i18n.TranslateFunc) {
-	questionId := db.GetUserNextQuestion(userId)
-	variantsCount := db.GetQuestionVariantsCount(questionId)
+func parseAnswer(data *processData) {
+	questionId := data.static.db.GetUserNextQuestion(data.userId)
+	variantsCount := data.static.db.GetQuestionVariantsCount(questionId)
 
-	if message == "/skip" {
-		db.RemoveUserPendingQuestion(userId, questionId)
-		sendMessage(bot, chatId, t("say_question_skipped"))
+	if data.command == "/skip" {
+		data.static.db.RemoveUserPendingQuestion(data.userId, questionId)
+		sendMessage(data.static.bot, data.chatId, data.static.trans("say_question_skipped"))
 
-		processCompleteness(bot, db, questionId, timers, t)
+		processCompleteness(data.static, questionId)
 
-		processNextQuestion(bot, db, userId, chatId)
+		processNextQuestion(data)
 		return
 	}
 
-	if !strings.HasPrefix(message, "/ans") {
-		sendMessage(bot, chatId, t("warn_wrong_answer"))
+	if !strings.HasPrefix(data.command, "/ans") {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_wrong_answer"))
 		return
 	}
 
-	answer, err := strconv.ParseInt(message[4:len(message)], 10, 64)
+	answer, err := strconv.ParseInt(data.command[4:len(data.command)], 10, 64)
 	if err != nil {
-		sendMessage(bot, chatId, t("warn_wrong_answer"))
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_wrong_answer"))
 		return
 	}
 
 	answer -= 1
 
 	if answer >= 0 && int(answer) < variantsCount {
-		db.AddQuestionAnswer(questionId, userId, answer)
-		db.RemoveUserPendingQuestion(userId, questionId)
-		sendMessage(bot, chatId, t("say_answer_added"))
+		data.static.db.AddQuestionAnswer(questionId, data.userId, answer)
+		data.static.db.RemoveUserPendingQuestion(data.userId, questionId)
+		sendMessage(data.static.bot, data.chatId, data.static.trans("say_answer_added"))
 
-		processCompleteness(bot, db, questionId, timers, t)
+		processCompleteness(data.static, questionId)
 
-		processNextQuestion(bot, db, userId, chatId)
+		processNextQuestion(data)
 	} else {
-		sendMessage(bot, chatId, t("warn_wrong_answer"))
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_wrong_answer"))
 	}
 }
 
@@ -234,37 +234,37 @@ func appendCommand(buffer *bytes.Buffer, command string, description string) {
 	buffer.WriteString(fmt.Sprintf("\n%s - %s", command, description))
 }
 
-func sendEditingGuide(bot *tgbotapi.BotAPI, db *database.Database, userId int64, chatId int64, t i18n.TranslateFunc) {
-	questionId := db.GetUserEditingQuestion(userId)
+func sendEditingGuide(data *processData) {
+	questionId := data.static.db.GetUserEditingQuestion(data.userId)
 
 	var buffer bytes.Buffer
-	buffer.WriteString(t("question_header"))
+	buffer.WriteString(data.static.trans("question_header"))
 
-	buffer.WriteString(t("text_caption"))
-	if db.IsQuestionHasText(questionId) {
-		buffer.WriteString(fmt.Sprintf("%s", db.GetQuestionText(questionId)))
+	buffer.WriteString(data.static.trans("text_caption"))
+	if data.static.db.IsQuestionHasText(questionId) {
+		buffer.WriteString(fmt.Sprintf("%s", data.static.db.GetQuestionText(questionId)))
 	} else {
-		buffer.WriteString(t("not_set"))
+		buffer.WriteString(data.static.trans("not_set"))
 	}
 
-	buffer.WriteString(t("variants_caption"))
-	if db.GetQuestionVariantsCount(questionId) > 0 {
-		variants := db.GetQuestionVariants(questionId)
+	buffer.WriteString(data.static.trans("variants_caption"))
+	if data.static.db.GetQuestionVariantsCount(questionId) > 0 {
+		variants := data.static.db.GetQuestionVariants(questionId)
 
 		for i, variant := range variants {
 			buffer.WriteString(fmt.Sprintf("\n<i>%d</i> - %s", i+1, variant))
 		}
 	} else {
-		buffer.WriteString(t("not_set"))
+		buffer.WriteString(data.static.trans("not_set"))
 	}
 
-	buffer.WriteString(t("rules_caption"))
-	if db.IsQuestionHasRules(questionId) {
-		min_answers, max_answers, time := db.GetQuestionRules(questionId)
+	buffer.WriteString(data.static.trans("rules_caption"))
+	if data.static.db.IsQuestionHasRules(questionId) {
+		min_answers, max_answers, time := data.static.db.GetQuestionRules(questionId)
 		rulesData := map[string]interface{}{
-			"Min":  t("answers", min_answers),
-			"Max":  t("answers", max_answers),
-			"Time": t("hours", time),
+			"Min":  data.static.trans("answers", min_answers),
+			"Max":  data.static.trans("answers", max_answers),
+			"Time": data.static.trans("hours", time),
 		}
 		var rulesTextFormat string
 
@@ -286,19 +286,19 @@ func sendEditingGuide(bot *tgbotapi.BotAPI, db *database.Database, userId int64,
 			rulesTextFormat = "rules_min"
 		}
 
-		buffer.WriteString(t(rulesTextFormat, rulesData))
+		buffer.WriteString(data.static.trans(rulesTextFormat, rulesData))
 	} else {
-		buffer.WriteString(t("not_set"))
+		buffer.WriteString(data.static.trans("not_set"))
 	}
 
-	appendCommand(&buffer, "/set_text", t("editing_commands_text"))
-	appendCommand(&buffer, "/set_variants", t("editing_commands_variants"))
-	appendCommand(&buffer, "/set_rules", t("editing_commands_rules"))
-	if db.IsQuestionReady(questionId) {
-		appendCommand(&buffer, "/commit_question", t("editing_commands_commit"))
+	appendCommand(&buffer, "/set_text", data.static.trans("editing_commands_text"))
+	appendCommand(&buffer, "/set_variants", data.static.trans("editing_commands_variants"))
+	appendCommand(&buffer, "/set_rules", data.static.trans("editing_commands_rules"))
+	if data.static.db.IsQuestionReady(questionId) {
+		appendCommand(&buffer, "/commit_question", data.static.trans("editing_commands_commit"))
 	}
-	appendCommand(&buffer, "/discard_question", t("editing_commands_discard"))
-	sendMessage(bot, chatId, buffer.String())
+	appendCommand(&buffer, "/discard_question", data.static.trans("editing_commands_discard"))
+	sendMessage(data.static.bot, data.chatId, buffer.String())
 }
 
 func isUserModerator(chatId int64, config *configuration) bool {
@@ -311,213 +311,247 @@ func isUserModerator(chatId int64, config *configuration) bool {
 	return false
 }
 
-func processModeratorCommand(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, message *string, chatId int64, config *configuration, t i18n.TranslateFunc) (isProcessed bool) {
-	if isUserModerator(chatId, config) {
-		if *message == "/m_last" {
-			questions := db.GetLastPublishedQuestions(15)
+func processModeratorCommand(data *processData) (isProcessed bool) {
+	if isUserModerator(data.chatId, data.static.config) {
+		if data.command == "/m_last" {
+			questions := data.static.db.GetLastPublishedQuestions(15)
 			var buffer bytes.Buffer
 			for _, question := range questions {
-				buffer.WriteString(fmt.Sprintf("%d - %s\n", question, db.GetQuestionText(question)))
+				buffer.WriteString(fmt.Sprintf("%d - %s\n", question, data.static.db.GetQuestionText(question)))
 			}
-			sendMessage(bot, chatId, buffer.String())
+			sendMessage(data.static.bot, data.chatId, buffer.String())
 			isProcessed = true
-		} else if strings.HasPrefix(*message, "/m_rm ") {
-			questionId, err := strconv.ParseInt((*message)[6:len(*message)], 10, 64)
+		} else if data.command == "/m_rm" {
+			questionId, err := strconv.ParseInt(data.message, 10, 64)
 
 			if err != nil {
 				return
 			}
 
-			removeActiveQuestion(bot, db, questionId, timers, t)
-			db.RemoveQuestion(questionId)
-			sendMessage(bot, chatId, "removed")
+			removeActiveQuestion(data.static, questionId)
+			data.static.db.RemoveQuestion(questionId)
+			sendMessage(data.static.bot, data.chatId, "removed")
 			isProcessed = true
-		} else if strings.HasPrefix(*message, "/m_ban ") {
-			questionId, err := strconv.ParseInt((*message)[7:len(*message)], 10, 64)
+		} else if data.command == "/m_ban" {
+			questionId, err := strconv.ParseInt(data.command, 10, 64)
 
 			if err != nil {
 				return
 			}
 
-			author := db.GetAuthor(questionId)
-			db.BanUser(author)
-			sendMessage(bot, chatId, fmt.Sprintf("banned: %d", author))
+			author := data.static.db.GetAuthor(questionId)
+			data.static.db.BanUser(author)
+			sendMessage(data.static.bot, data.chatId, fmt.Sprintf("banned: %d", author))
 			isProcessed = true
-		} else if strings.HasPrefix(*message, "/m_send ") {
-			text := (*message)[8:len(*message)]
-			sendMessage(bot, chatId, text)
+		} else if data.command == "/m_send" {
+			sendMessage(data.static.bot, data.chatId, data.message)
 			isProcessed = true
 		}
 	}
 	return
 }
 
-func processCommand(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, config *configuration, message *string, chatId int64, t i18n.TranslateFunc) {
-	userId := db.GetUserId(chatId)
+type staticProccessStructs struct {
+	bot *tgbotapi.BotAPI
+	db *database.Database
+	userStates map[int64]userState
+	timers map[int64]time.Time
+	config *configuration
+	trans i18n.TranslateFunc
+}
 
-	switch *message {
+type processData struct {
+	static *staticProccessStructs
+	command string // first part of message starting with /
+	message string // parameters of command or plain message
+	chatId int64
+	userId int64
+}
+
+type commandProcessor struct {
+}
+
+func makeCommandProcessors() []func(processData)bool {
+	processors := []func(processData)bool{
+		func(processData)bool{
+			return false;
+		},
+	}
+	return processors
+}
+
+func processCommand(data *processData) {
+	switch data.command {
 	case "/add_question":
-		if db.IsUserBanned(userId) {
-			sendMessage(bot, chatId, t("warn_youre_banned"))
+		if data.static.db.IsUserBanned(data.userId) {
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_youre_banned"))
 			return
 		}
-		if !db.IsUserEditingQuestion(userId) {
-			db.StartCreatingQuestion(userId)
-			db.UnmarkUserReady(userId)
-			userStates[chatId] = WaitingText
-			sendMessage(bot, chatId, t("ask_question_text"))
+		if !data.static.db.IsUserEditingQuestion(data.userId) {
+			data.static.db.StartCreatingQuestion(data.userId)
+			data.static.db.UnmarkUserReady(data.userId)
+			data.static.userStates[data.chatId] = WaitingText
+			sendMessage(data.static.bot, data.chatId, data.static.trans("ask_question_text"))
 		} else {
-			sendEditingGuide(bot, db, userId, chatId, t)
+			sendEditingGuide(data)
 		}
 	case "/set_text":
-		if db.IsUserEditingQuestion(userId) {
-			userStates[chatId] = WaitingText
-			sendMessage(bot, chatId, t("ask_question_text"))
+		if data.static.db.IsUserEditingQuestion(data.userId) {
+			data.static.userStates[data.chatId] = WaitingText
+			sendMessage(data.static.bot, data.chatId, data.static.trans("ask_question_text"))
 		} else {
-			sendMessage(bot, chatId, t("warn_not_editing_question"))
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
 		}
 	case "/set_variants":
-		if db.IsUserEditingQuestion(userId) {
-			userStates[chatId] = WaitingVariants
-			sendMessage(bot, chatId, t("ask_variants"))
+		if data.static.db.IsUserEditingQuestion(data.userId) {
+			data.static.userStates[data.chatId] = WaitingVariants
+			sendMessage(data.static.bot, data.chatId, data.static.trans("ask_variants"))
 		} else {
-			sendMessage(bot, chatId, t("warn_not_editing_question"))
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
 		}
 	case "/set_rules":
-		if db.IsUserEditingQuestion(userId) {
-			userStates[chatId] = WaitingRules
-			sendMessage(bot, chatId, t("ask_rules"))
+		if data.static.db.IsUserEditingQuestion(data.userId) {
+			data.static.userStates[data.chatId] = WaitingRules
+			sendMessage(data.static.bot, data.chatId, data.static.trans("ask_rules"))
 		} else {
-			sendMessage(bot, chatId, t("warn_not_editing_question"))
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
 		}
 	case "/commit_question":
-		if db.IsUserBanned(userId) {
-			sendMessage(bot, chatId, t("warn_youre_banned"))
-			if db.IsUserEditingQuestion(userId) {
-				questionId := db.GetUserEditingQuestion(userId)
-				db.DiscardQuestion(questionId)
-				processNextQuestion(bot, db, userId, chatId)
+		if data.static.db.IsUserBanned(data.userId) {
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_youre_banned"))
+			if data.static.db.IsUserEditingQuestion(data.userId) {
+				questionId := data.static.db.GetUserEditingQuestion(data.userId)
+				data.static.db.DiscardQuestion(questionId)
+				processNextQuestion(data)
 			}
 			return
 		}
-		if db.IsUserEditingQuestion(userId) {
-			questionId := db.GetUserEditingQuestion(userId)
-			if db.IsQuestionReady(questionId) && db.GetQuestionVariantsCount(questionId) > 0 {
-				commitQuestion(bot, db, userId, chatId, questionId, timers, t)
+		if data.static.db.IsUserEditingQuestion(data.userId) {
+			questionId := data.static.db.GetUserEditingQuestion(data.userId)
+			if data.static.db.IsQuestionReady(questionId) && data.static.db.GetQuestionVariantsCount(questionId) > 0 {
+				commitQuestion(data, questionId)
 			} else {
-				sendMessage(bot, chatId, t("warn_question_not_ready"))
+				sendMessage(data.static.bot, data.chatId, data.static.trans("warn_question_not_ready"))
 			}
 		} else {
-			sendMessage(bot, chatId, t("warn_not_editing_question"))
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
 		}
 	case "/discard_question":
-		if db.IsUserEditingQuestion(userId) {
-			questionId := db.GetUserEditingQuestion(userId)
-			db.DiscardQuestion(questionId)
-			sendMessage(bot, chatId, t("say_question_discarded"))
-			processNextQuestion(bot, db, userId, chatId)
+		if data.static.db.IsUserEditingQuestion(data.userId) {
+			questionId := data.static.db.GetUserEditingQuestion(data.userId)
+			data.static.db.DiscardQuestion(questionId)
+			sendMessage(data.static.bot, data.chatId, data.static.trans("say_question_discarded"))
+			processNextQuestion(data)
 		} else {
-			sendMessage(bot, chatId, t("warn_not_editing_question"))
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_not_editing_question"))
 		}
 	case "/start":
-		sendMessage(bot, chatId, t("hello_message"))
-		if !db.IsUserHasPendingQuestions(userId) {
-			db.InitNewUserQuestions(userId)
-			db.UnmarkUserReady(userId)
-			processNextQuestion(bot, db, userId, chatId)
+		sendMessage(data.static.bot, data.chatId, data.static.trans("hello_message"))
+		if !data.static.db.IsUserHasPendingQuestions(data.userId) {
+			data.static.db.InitNewUserQuestions(data.userId)
+			data.static.db.UnmarkUserReady(data.userId)
+			processNextQuestion(data)
 		}
 	case "/last_results":
-		questions := db.GetLastFinishedQuestions(10)
+		questions := data.static.db.GetLastFinishedQuestions(10)
 		for _, questionId := range questions {
-			sendResults(bot, db, questionId, []int64{chatId}, t)
+			sendResults(data.static, questionId, []int64{data.chatId})
 		}
 	default:
-		isProcessed := processModeratorCommand(bot, db, userStates, timers, message, chatId, config, t)
+		isProcessed := processModeratorCommand(data)
 
 		if !isProcessed {
-			if db.IsUserEditingQuestion(userId) {
-				sendMessage(bot, chatId, t("warn_unknown_command"))
-				sendEditingGuide(bot, db, userId, chatId, t)
+			if data.static.db.IsUserEditingQuestion(data.userId) {
+				sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
+				sendEditingGuide(data)
 			} else {
-				if db.IsUserHasPendingQuestions(userId) {
-					parseAnswer(bot, db, chatId, userId, *message, timers, t)
+				if data.static.db.IsUserHasPendingQuestions(data.userId) {
+					parseAnswer(data)
 				} else {
-					sendMessage(bot, chatId, t("warn_unknown_command"))
+					sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
 				}
 			}
 		}
 	}
 }
 
-func processText(bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, message *string, chatId int64, t i18n.TranslateFunc) {
-	userId := db.GetUserId(chatId)
-
-	if userState, ok := userStates[chatId]; ok {
+func processText(data *processData) {
+	if userState, ok := data.static.userStates[data.chatId]; ok {
 		switch userState {
 		case WaitingText:
-			if db.IsUserEditingQuestion(userId) {
-				questionId := db.GetUserEditingQuestion(userId)
-				db.SetQuestionText(questionId, *message)
-				sendMessage(bot, chatId, t("say_text_is_set"))
-				sendEditingGuide(bot, db, userId, chatId, t)
-				delete(userStates, chatId)
+			if data.static.db.IsUserEditingQuestion(data.userId) {
+				questionId := data.static.db.GetUserEditingQuestion(data.userId)
+				data.static.db.SetQuestionText(questionId, data.message)
+				sendMessage(data.static.bot, data.chatId, data.static.trans("say_text_is_set"))
+				sendEditingGuide(data)
+				delete(data.static.userStates, data.chatId)
 			} else {
-				sendMessage(bot, chatId, t("warn_unknown_command"))
-				delete(userStates, chatId)
+				sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
+				delete(data.static.userStates, data.chatId)
 			}
 		case WaitingVariants:
-			if db.IsUserEditingQuestion(userId) {
-				questionId := db.GetUserEditingQuestion(userId)
-				ok := setVariants(db, questionId, message)
+			if data.static.db.IsUserEditingQuestion(data.userId) {
+				questionId := data.static.db.GetUserEditingQuestion(data.userId)
+				ok := setVariants(data.static.db, questionId, &data.message)
 				if ok {
-					sendMessage(bot, chatId, t("say_variants_is_set"))
-					sendEditingGuide(bot, db, userId, chatId, t)
-					delete(userStates, chatId)
+					sendMessage(data.static.bot, data.chatId, data.static.trans("say_variants_is_set"))
+					sendEditingGuide(data)
+					delete(data.static.userStates, data.chatId)
 				} else {
-					sendMessage(bot, chatId, t("warn_bad_variants"))
+					sendMessage(data.static.bot, data.chatId, data.static.trans("warn_bad_variants"))
 				}
 			} else {
-				sendMessage(bot, chatId, t("warn_unknown_command"))
-				delete(userStates, chatId)
+				sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
+				delete(data.static.userStates, data.chatId)
 			}
 		case WaitingRules:
-			if db.IsUserEditingQuestion(userId) {
-				questionId := db.GetUserEditingQuestion(userId)
-				ok := setRules(db, questionId, message)
+			if data.static.db.IsUserEditingQuestion(data.userId) {
+				questionId := data.static.db.GetUserEditingQuestion(data.userId)
+				ok := setRules(data.static.db, questionId, &data.message)
 				if ok {
-					sendMessage(bot, chatId, t("say_rules_is_set"))
-					sendEditingGuide(bot, db, userId, chatId, t)
-					delete(userStates, chatId)
+					sendMessage(data.static.bot, data.chatId, data.static.trans("say_rules_is_set"))
+					sendEditingGuide(data)
+					delete(data.static.userStates, data.chatId)
 				} else {
-					sendMessage(bot, chatId, t("warn_bad_rules"))
+					sendMessage(data.static.bot, data.chatId, data.static.trans("warn_bad_rules"))
 				}
 			} else {
-				sendMessage(bot, chatId, t("warn_unknown_command"))
-				delete(userStates, chatId)
+				sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
+				delete(data.static.userStates, data.chatId)
 			}
 		default:
-			sendMessage(bot, chatId, t("warn_unknown_command"))
-			delete(userStates, chatId)
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
+			delete(data.static.userStates, data.chatId)
 		}
 	} else {
-		sendMessage(bot, chatId, t("warn_unknown_command"))
-		if db.IsUserEditingQuestion(userId) {
-			sendEditingGuide(bot, db, userId, chatId, t)
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
+		if data.static.db.IsUserEditingQuestion(data.userId) {
+			sendEditingGuide(data)
 		}
 	}
 }
 
-func processUpdate(update *tgbotapi.Update, bot *tgbotapi.BotAPI, db *database.Database, userStates map[int64]userState, timers map[int64]time.Time, config *configuration, t i18n.TranslateFunc) {
+func processUpdate(update *tgbotapi.Update, staticData *staticProccessStructs) {
+	data := processData{
+		static : staticData,
+		chatId : update.Message.Chat.ID,
+		userId : staticData.db.GetUserId(update.Message.Chat.ID),
+	}
+
 	message := update.Message.Text
-	chatId := update.Message.Chat.ID
 
 	if strings.HasPrefix(message, "/") {
-		processCommand(bot, db, userStates, timers, config, &message, chatId, t)
+		commandLen := strings.Index(message, " ")
+		data.command = message[:commandLen]
+		data.message = message[commandLen+1:]
+		processCommand(&data)
 	} else {
-		processText(bot, db, userStates, &message, chatId, t)
+		data.message = message
+		processText(&data)
 	}
 }
 
-func processTimer(bot *tgbotapi.BotAPI, db *database.Database, questionId int64, timers map[int64]time.Time, t i18n.TranslateFunc) {
-	processCompleteness(bot, db, questionId, timers, t)
+func processTimer(staticData *staticProccessStructs, questionId int64) {
+	processCompleteness(staticData, questionId)
 }
+

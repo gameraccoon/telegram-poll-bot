@@ -525,50 +525,62 @@ func isUserModerator(chatId int64, config *configuration) bool {
 	return false
 }
 
-func processText(data *processData) {
+func processSetTextContent(data *processData) {
+	if data.static.db.IsUserEditingQuestion(data.userId) {
+		questionId := data.static.db.GetUserEditingQuestion(data.userId)
+		data.static.db.SetQuestionText(questionId, data.message)
+		sendMessage(data.static.bot, data.chatId, data.static.trans("say_text_is_set"))
+		sendEditingGuide(data)
+		delete(data.static.userStates, data.chatId)
+	} else {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
+		delete(data.static.userStates, data.chatId)
+	}
+}
+
+func processSetVariantsContent(data *processData) {
+	if data.static.db.IsUserEditingQuestion(data.userId) {
+		questionId := data.static.db.GetUserEditingQuestion(data.userId)
+		ok := setVariants(data.static.db, questionId, &data.message)
+		if ok {
+			sendMessage(data.static.bot, data.chatId, data.static.trans("say_variants_is_set"))
+			sendEditingGuide(data)
+			delete(data.static.userStates, data.chatId)
+		} else {
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_bad_variants"))
+		}
+	} else {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
+		delete(data.static.userStates, data.chatId)
+	}
+}
+
+func processSetRulesContent(data *processData) {
+	if data.static.db.IsUserEditingQuestion(data.userId) {
+		questionId := data.static.db.GetUserEditingQuestion(data.userId)
+		ok := setRules(data.static.db, questionId, &data.message)
+		if ok {
+			sendMessage(data.static.bot, data.chatId, data.static.trans("say_rules_is_set"))
+			sendEditingGuide(data)
+			delete(data.static.userStates, data.chatId)
+		} else {
+			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_bad_rules"))
+		}
+	} else {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
+		delete(data.static.userStates, data.chatId)
+	}
+}
+
+func processPlainMessage(data *processData) {
 	if userState, ok := data.static.userStates[data.chatId]; ok {
 		switch userState {
 		case WaitingText:
-			if data.static.db.IsUserEditingQuestion(data.userId) {
-				questionId := data.static.db.GetUserEditingQuestion(data.userId)
-				data.static.db.SetQuestionText(questionId, data.message)
-				sendMessage(data.static.bot, data.chatId, data.static.trans("say_text_is_set"))
-				sendEditingGuide(data)
-				delete(data.static.userStates, data.chatId)
-			} else {
-				sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
-				delete(data.static.userStates, data.chatId)
-			}
+			processSetTextContent(data)
 		case WaitingVariants:
-			if data.static.db.IsUserEditingQuestion(data.userId) {
-				questionId := data.static.db.GetUserEditingQuestion(data.userId)
-				ok := setVariants(data.static.db, questionId, &data.message)
-				if ok {
-					sendMessage(data.static.bot, data.chatId, data.static.trans("say_variants_is_set"))
-					sendEditingGuide(data)
-					delete(data.static.userStates, data.chatId)
-				} else {
-					sendMessage(data.static.bot, data.chatId, data.static.trans("warn_bad_variants"))
-				}
-			} else {
-				sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
-				delete(data.static.userStates, data.chatId)
-			}
+			processSetVariantsContent(data)
 		case WaitingRules:
-			if data.static.db.IsUserEditingQuestion(data.userId) {
-				questionId := data.static.db.GetUserEditingQuestion(data.userId)
-				ok := setRules(data.static.db, questionId, &data.message)
-				if ok {
-					sendMessage(data.static.bot, data.chatId, data.static.trans("say_rules_is_set"))
-					sendEditingGuide(data)
-					delete(data.static.userStates, data.chatId)
-				} else {
-					sendMessage(data.static.bot, data.chatId, data.static.trans("warn_bad_rules"))
-				}
-			} else {
-				sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
-				delete(data.static.userStates, data.chatId)
-			}
+			processSetRulesContent(data)
 		default:
 			sendMessage(data.static.bot, data.chatId, data.static.trans("warn_unknown_command"))
 			delete(data.static.userStates, data.chatId)
@@ -602,7 +614,7 @@ func processUpdate(update *tgbotapi.Update, staticData *staticProccessStructs) {
 		processCommand(&data)
 	} else {
 		data.message = message
-		processText(&data)
+		processPlainMessage(&data)
 	}
 }
 

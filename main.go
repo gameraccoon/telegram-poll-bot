@@ -96,6 +96,9 @@ func updateBot(staticData *staticProccessStructs, mutex *sync.Mutex) {
 		log.Fatal(err.Error())
 	}
 
+	staticData.processors = makeUserCommandProcessors()
+	staticData.moderatorProcessors = makeModeratorCommandProcessors()
+
 	for update := range updates {
 		if update.Message == nil {
 			continue

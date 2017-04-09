@@ -23,21 +23,21 @@ func setRules(db *database.Database, questionId int64, message *string) (ok bool
 		return false
 	}
 
-	var min_answers int
-	var max_answers int
+	var minAnswers int
+	var maxAnswers int
 	var time int64
 	var err error
 
 	if len(rules) >= 1 {
-		min_answers, err = strconv.Atoi(rules[0])
-		if err != nil || min_answers < 0 {
+		minAnswers, err = strconv.Atoi(rules[0])
+		if err != nil || minAnswers < 0 {
 			return false
 		}
 	}
 
 	if len(rules) >= 2 {
-		max_answers, err = strconv.Atoi(rules[1])
-		if err != nil || max_answers < 0 {
+		maxAnswers, err = strconv.Atoi(rules[1])
+		if err != nil || maxAnswers < 0 {
 			return false
 		}
 	}
@@ -49,28 +49,29 @@ func setRules(db *database.Database, questionId int64, message *string) (ok bool
 		}
 	}
 
-	if min_answers == 0 && max_answers == 0 && time == 0 {
+	if minAnswers == 0 && maxAnswers == 0 && time == 0 {
 		return false
 	}
 
 	// make unambuguous rules
 	if time == 0 {
-		if min_answers == 0 {
-			min_answers = max_answers
-		} else if max_answers == 0 {
-			max_answers = min_answers
-		} else if min_answers > max_answers {
-			min_answers = max_answers
+		if minAnswers == 0 {
+			minAnswers = maxAnswers
+		} else if maxAnswers == 0 {
+			maxAnswers = minAnswers
+		} else if minAnswers > maxAnswers {
+			minAnswers = maxAnswers
 		} else {
-			max_answers = min_answers
+			maxAnswers = minAnswers
 		}
 	} else {
-		if min_answers > max_answers {
-			min_answers = max_answers
+		if minAnswers >= maxAnswers {
+			time = 0
+			minAnswers = maxAnswers
 		}
 	}
 
-	db.SetQuestionRules(questionId, min_answers, max_answers, time)
+	db.SetQuestionRules(questionId, minAnswers, maxAnswers, time)
 	return true
 }
 
@@ -107,12 +108,12 @@ func commitQuestion(data *processData, questionId int64) {
 	data.static.db.CommitQuestion(questionId)
 	sendMessage(data.static.bot, data.chatId, data.static.trans("say_question_commited"))
 
-	min_answers, max_answers, durationTime := data.static.db.GetQuestionRules(questionId)
+	minAnswers, maxAnswers, durationTime := data.static.db.GetQuestionRules(questionId)
 
 	endTime := time.Now().Add(time.Duration(durationTime) * time.Hour)
 	data.static.timers[questionId] = endTime
 
-	data.static.db.SetQuestionRules(questionId, min_answers, max_answers, endTime.Unix())
+	data.static.db.SetQuestionRules(questionId, minAnswers, maxAnswers, endTime.Unix())
 
 	processNextQuestion(data)
 
@@ -167,27 +168,60 @@ func completeQuestion(staticData *staticProccessStructs, questionId int64) {
 	sendResults(staticData, questionId, chatIds)
 }
 
-func processCompleteness(staticData *staticProccessStructs, questionId int64) {
-	min_answers, max_answers, _ := staticData.db.GetQuestionRules(questionId)
+func isQuestionReadyToBeCompleted(staticData *staticProccessStructs, questionId int64) bool {
+	minAnswers, maxAnswers, _ := staticData.db.GetQuestionRules(questionId)
 
 	answersCount := staticData.db.GetQuestionAnswersCount(questionId)
 
-	if answersCount >= max_answers && max_answers > 0 {
-		completeQuestion(staticData, questionId)
-		return
-	}
-
-	if staticData.db.GetQuestionPendingCount(questionId) == 0 {
-		completeQuestion(staticData, questionId)
-		return
+	if answersCount >= maxAnswers && maxAnswers > 0 {
+		return true
 	}
 
 	if _, ok := staticData.timers[questionId]; !ok {
-		if answersCount >= min_answers {
-			completeQuestion(staticData, questionId)
-			return
+		if answersCount >= minAnswers {
+			return true
 		}
 	}
+
+	return false
+}
+
+func processCompleteness(staticData *staticProccessStructs, questionId int64) {
+	if isQuestionReadyToBeCompleted(staticData, questionId) {
+		completeQuestion(staticData, questionId)
+	}
+}
+
+func sendAnswerFeedback(data *processData, questionId int64) {
+	if isQuestionReadyToBeCompleted(data.static, questionId) {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("say_answer_added"))
+		return
+	}
+
+	minAnswers, maxAnswers, endTime := data.static.db.GetQuestionRules(questionId)
+	answersCount := data.static.db.GetQuestionAnswersCount(questionId)
+
+	// recalculate currently deficient values
+	minAnswers = minAnswers - answersCount
+	maxAnswers = maxAnswers - answersCount
+	var timeHours int64
+	if endTime > 0 {
+		timeHours = int64(time.Unix(endTime, 0).Sub(time.Now()).Hours() + 1)
+	}
+
+	if minAnswers < 0 {
+		minAnswers = 0
+	}
+
+	if maxAnswers < 0 {
+		maxAnswers = 0
+	}
+
+	if timeHours < 0 {
+		timeHours = 0
+	}
+
+	sendMessage(data.static.bot, data.chatId, getQuestionRulesText(minAnswers, maxAnswers, timeHours, "delta_answers", data.static.trans))
 }
 
 func parseAnswer(data *processData) {
@@ -220,7 +254,8 @@ func parseAnswer(data *processData) {
 	if answer >= 0 && int(answer) < variantsCount {
 		data.static.db.AddQuestionAnswer(questionId, data.userId, answer)
 		data.static.db.RemoveUserPendingQuestion(data.userId, questionId)
-		sendMessage(data.static.bot, data.chatId, data.static.trans("say_answer_added"))
+
+		sendAnswerFeedback(data, questionId)
 
 		processCompleteness(data.static, questionId)
 
@@ -232,6 +267,36 @@ func parseAnswer(data *processData) {
 
 func appendCommand(buffer *bytes.Buffer, command string, description string) {
 	buffer.WriteString(fmt.Sprintf("\n%s - %s", command, description))
+}
+
+func getQuestionRulesText(minAnswers int, maxAnswers int, time int64, answersTag string, trans i18n.TranslateFunc) string {
+	rulesData := map[string]interface{}{
+		"Min":  trans(answersTag, minAnswers),
+		"Max":  trans(answersTag, maxAnswers),
+		"Time": trans("hours", time),
+	}
+	var rulesTextFormat string
+
+	if time != 0 {
+		if minAnswers != 0 {
+			if maxAnswers != 0 {
+				rulesTextFormat = "rules_full"
+			} else {
+				rulesTextFormat = "rules_min_timer"
+			}
+		} else {
+			if maxAnswers != 0 {
+				rulesTextFormat = "rules_max_timer"
+			} else {
+				rulesTextFormat = "rules_timer"
+			}
+		}
+	} else {
+		rulesTextFormat = "rules_min"
+	}
+
+	return trans(rulesTextFormat, rulesData)
+
 }
 
 func sendEditingGuide(data *processData) {
@@ -260,33 +325,8 @@ func sendEditingGuide(data *processData) {
 
 	buffer.WriteString(data.static.trans("rules_caption"))
 	if data.static.db.IsQuestionHasRules(questionId) {
-		min_answers, max_answers, time := data.static.db.GetQuestionRules(questionId)
-		rulesData := map[string]interface{}{
-			"Min":  data.static.trans("answers", min_answers),
-			"Max":  data.static.trans("answers", max_answers),
-			"Time": data.static.trans("hours", time),
-		}
-		var rulesTextFormat string
-
-		if time != 0 {
-			if min_answers != 0 {
-				if max_answers != 0 {
-					rulesTextFormat = "rules_full"
-				} else {
-					rulesTextFormat = "rules_min_timer"
-				}
-			} else {
-				if max_answers != 0 {
-					rulesTextFormat = "rules_max_timer"
-				} else {
-					rulesTextFormat = "rules_timer"
-				}
-			}
-		} else {
-			rulesTextFormat = "rules_min"
-		}
-
-		buffer.WriteString(data.static.trans(rulesTextFormat, rulesData))
+		minAnswers, maxAnswers, time := data.static.db.GetQuestionRules(questionId)
+		buffer.WriteString(getQuestionRulesText(minAnswers, maxAnswers, time, "answers", data.static.trans))
 	} else {
 		buffer.WriteString(data.static.trans("not_set"))
 	}
@@ -402,13 +442,16 @@ func moderatorListCommand(data *processData) {
 }
 
 func moderatorBanCommand(data *processData) {
-	questionId, err := strconv.ParseInt(data.command, 10, 64)
+	questionId, err := strconv.ParseInt(data.message, 10, 64)
 
 	if err != nil {
 		return
 	}
 
-	author := data.static.db.GetAuthor(questionId)
+	author, err := data.static.db.GetAuthor(questionId)
+	if err != nil {
+		return
+	}
 	data.static.db.BanUser(author)
 	sendMessage(data.static.bot, data.chatId, fmt.Sprintf("banned: %d", author))
 }

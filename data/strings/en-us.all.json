@@ -11,14 +11,14 @@
   "variants_caption": { "other": "\n<b>Variants</b>: " },
   "rules_caption": { "other": "\n<b>Rules</b>: " },
   "not_set": { "other": "<b>Not set</b>" },
-  "rules_full": { "other": "Question will be closed after {{.Time}} when there are at least {{.Min}} or immediately after {{.Max}}" },
-  "rules_min_timer": { "other": "Question will be closed after {{.Time}} when there are at least {{.Min}}" },
-  "rules_max_timer": { "other": "Question will be closed after {{.Time}} or after {{.Max}}" },
-  "rules_timer": { "other": "Question will be closed after {{.Time}}" },
-  "rules_min": { "other": "Question will be closed when there are {{.Min}}" },
+  "rules_full": { "other": "Results will be available after {{.Time}} when there are at least {{.Min}} or immediately after {{.Max}}" },
+  "rules_min_timer": { "other": "Results will be available after {{.Time}} when there are at least {{.Min}}" },
+  "rules_max_timer": { "other": "Results will be available after {{.Time}} or after {{.Max}}" },
+  "rules_timer": { "other": "Results will be available after {{.Time}}" },
+  "rules_min": { "other": "Results will be available when there are {{.Min}}" },
   "ask_question_text": { "other": "Write text of your question." },
   "ask_variants" : { "other" : "Write variants. Each one on a new line."},
-  "ask_rules" : { "other" : "Write ending rules in format \"n k t\",\nn - minimum answers count that needed to end the question\nk - maximum answers count that will end question immediately\nt - time that question will be waiting for the ending\nExample: 5 10 1"},
+  "ask_rules" : { "other" : "Write ending rules in format \"n k t\",\nn - minimum answers count that needed to end the question\nk - maximum answers count that will end question immediately\nt - time that question will be waiting for the ending\nExample: 5 20 24"},
   "say_question_commited" : { "other" : "Your question is added sucessfully"},
   "say_question_discarded" : { "other" : "Question have been discarded"},
   "say_text_is_set" : { "other" : "Text is set"},
@@ -40,5 +40,10 @@
   "answers" : {
     "one" : "{{.Count}} answer",
     "other" : "{{.Count}} answers"
+  },
+  "delta_answers" : {
+    "one" : "{{.Count}} more answer",
+    "other" : "{{.Count}} answers more"
   }
+
 }

@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
+	"errors"
 	"log"
 	"fmt"
 	"bytes"
@@ -879,7 +880,7 @@ func (database *Database) RemoveQuestion(questionId int64) {
 	database.execQuery(fmt.Sprintf("DELETE FROM questions WHERE id=%d", questionId))
 }
 
-func (database *Database) GetAuthor(questionId int64) (author int64) {
+func (database *Database) GetAuthor(questionId int64) (author int64, findErr error) {
 	rows, err := database.conn.Query(fmt.Sprintf("SELECT author FROM questions WHERE id=%d", questionId))
 
 	if err != nil {
@@ -897,7 +898,7 @@ func (database *Database) GetAuthor(questionId int64) (author int64) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Fatal("No question found")
+		findErr = errors.New("No question found")
 	}
 
 	return

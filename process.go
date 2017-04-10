@@ -221,7 +221,7 @@ func sendAnswerFeedback(data *processData, questionId int64) {
 		timeHours = 0
 	}
 
-	sendMessage(data.static.bot, data.chatId, getQuestionRulesText(minAnswers, maxAnswers, timeHours, "delta_answers", data.static.trans))
+	sendMessage(data.static.bot, data.chatId, data.static.trans("say_answer_added") + "\n" + getQuestionRulesText(minAnswers, maxAnswers, timeHours, "delta_answers", data.static.trans))
 }
 
 func parseAnswer(data *processData) {

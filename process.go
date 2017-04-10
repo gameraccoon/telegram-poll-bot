@@ -142,7 +142,7 @@ func sendResults(staticData *staticProccessStructs, questionId int64, chatIds []
 }
 
 func removeActiveQuestion(staticData *staticProccessStructs, questionId int64) {
-	staticData.db.EndQuestion(questionId)
+	staticData.db.FinishQuestion(questionId)
 
 	delete(staticData.timers, questionId)
 
@@ -192,14 +192,9 @@ func processCompleteness(staticData *staticProccessStructs, questionId int64) {
 	}
 }
 
-func sendAnswerFeedback(data *processData, questionId int64) {
-	if isQuestionReadyToBeCompleted(data.static, questionId) {
-		sendMessage(data.static.bot, data.chatId, data.static.trans("say_answer_added"))
-		return
-	}
-
-	minAnswers, maxAnswers, endTime := data.static.db.GetQuestionRules(questionId)
-	answersCount := data.static.db.GetQuestionAnswersCount(questionId)
+func getDificientDataForQuestionText(staticData *staticProccessStructs, questionId int64) string {
+	minAnswers, maxAnswers, endTime := staticData.db.GetQuestionRules(questionId)
+	answersCount := staticData.db.GetQuestionAnswersCount(questionId)
 
 	// recalculate currently deficient values
 	minAnswers = minAnswers - answersCount
@@ -221,7 +216,16 @@ func sendAnswerFeedback(data *processData, questionId int64) {
 		timeHours = 0
 	}
 
-	sendMessage(data.static.bot, data.chatId, data.static.trans("say_answer_added") + "\n" + getQuestionRulesText(minAnswers, maxAnswers, timeHours, "delta_answers", data.static.trans))
+	return getQuestionRulesText(minAnswers, maxAnswers, timeHours, "delta_answers", staticData.trans)
+}
+
+func sendAnswerFeedback(data *processData, questionId int64) {
+	if isQuestionReadyToBeCompleted(data.static, questionId) {
+		sendMessage(data.static.bot, data.chatId, data.static.trans("say_answer_added"))
+		return
+	}
+
+	sendMessage(data.static.bot, data.chatId, data.static.trans("say_answer_added")+"\n"+getDificientDataForQuestionText(data.static, questionId))
 }
 
 func parseAnswer(data *processData) {
@@ -432,6 +436,27 @@ func lastResultsCommand(data *processData) {
 	}
 }
 
+func myQuestionsCommand(data *processData) {
+	questionsIds := data.static.db.GetUserLastQuestions(data.userId, 10)
+	finishedQuestionsIds := data.static.db.GetUserLastFinishedQuestions(data.userId, 10)
+
+	finishedQuestionsMap := make(map[int64]bool)
+	for _, questionId := range finishedQuestionsIds {
+		finishedQuestionsMap[questionId] = true
+	}
+
+	for _, questionId := range questionsIds {
+		if _, ok := finishedQuestionsMap[questionId]; ok {
+			sendResults(data.static, questionId, []int64{data.chatId})
+		} else {
+			sendMessage(data.static.bot, data.chatId, fmt.Sprintf("<i>%s</i>\n%s",
+				data.static.db.GetQuestionText(questionId),
+				getDificientDataForQuestionText(data.static, questionId),
+			))
+		}
+	}
+}
+
 func moderatorListCommand(data *processData) {
 	questions := data.static.db.GetLastPublishedQuestions(15)
 	var buffer bytes.Buffer
@@ -469,7 +494,10 @@ func moderatorRemoveCommand(data *processData) {
 }
 
 func moderatorSendCommand(data *processData) {
-	sendMessage(data.static.bot, data.chatId, data.message)
+	chatIds := data.static.db.GetAllUsersChatIds()
+	for _, chatId := range chatIds {
+		sendMessage(data.static.bot, chatId, data.message)
+	}
 }
 
 type staticProccessStructs struct {
@@ -501,6 +529,7 @@ func makeUserCommandProcessors() map[string]func(*processData) {
 		"commit_question":  commitQuestionCommand,
 		"discard_question": discardQuestionCommand,
 		"last_results":     lastResultsCommand,
+		"my_questions":     myQuestionsCommand,
 	}
 }
 

@@ -310,7 +310,7 @@ func TestAnswerQuestion(t *testing.T) {
 		questionId := db.GetUserNextQuestion(userId2)
 		db.AddQuestionAnswer(questionId, userId2, int64(1))
 		db.RemoveUserPendingQuestion(userId2, questionId)
-		db.EndQuestion(questionId)
+		db.FinishQuestion(questionId)
 		users := db.GetUsersAnsweringQuestionNow(questionId)
 		assert.Equal(1, len(users))
 

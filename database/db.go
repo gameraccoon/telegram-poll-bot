@@ -594,7 +594,7 @@ func (database *Database) DiscardQuestion(questionId int64) {
 	database.execQuery(fmt.Sprintf("DELETE FROM questions where status=0 AND id=%d", questionId))
 }
 
-func (database *Database) EndQuestion(questionId int64) {
+func (database *Database) FinishQuestion(questionId int64) {
 	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET status=2 WHERE id=%d", questionId))
 }
 
@@ -873,7 +873,6 @@ func (database *Database) GetLastPublishedQuestions(count int64) (questions []in
 	}
 
 	return
-
 }
 
 func (database *Database) RemoveQuestion(questionId int64) {
@@ -899,6 +898,52 @@ func (database *Database) GetAuthor(questionId int64) (author int64, findErr err
 			log.Fatal(err)
 		}
 		findErr = errors.New("No question found")
+	}
+
+	return
+}
+
+func (database *Database) GetUserLastQuestions(userId int64, count int) (questions []int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM" +
+		"(SELECT q.id as id FROM questions as q" +
+		" WHERE q.author=%d AND (q.status=1 OR q.status=2)" +
+		" ORDER BY q.id DESC LIMIT %d) ORDER BY id ASC", userId, count))
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var questionId int64
+		err := rows.Scan(&questionId)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		questions = append(questions, questionId)
+	}
+
+	return
+}
+
+func (database *Database) GetUserLastFinishedQuestions(userId int64, count int) (questions []int64) {
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM" +
+		"(SELECT q.id as id FROM questions as q" +
+		" WHERE q.author=%d AND q.status=2" +
+		" ORDER BY q.id DESC LIMIT %d) ORDER BY id ASC", userId, count))
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var questionId int64
+		err := rows.Scan(&questionId)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		questions = append(questions, questionId)
 	}
 
 	return

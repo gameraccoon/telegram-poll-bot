@@ -65,7 +65,7 @@ func setRules(db *database.Database, questionId int64, message *string) (ok bool
 			maxAnswers = minAnswers
 		}
 	} else {
-		if minAnswers >= maxAnswers {
+		if minAnswers >= maxAnswers && maxAnswers > 0 {
 			time = 0
 			minAnswers = maxAnswers
 		}

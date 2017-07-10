@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"github.com/gameraccoon/telegram-poll-bot/database"
+	"github.com/gameraccoon/telegram-poll-bot/processing"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/nicksnyder/go-i18n/i18n"
 	"io/ioutil"
@@ -30,28 +31,9 @@ func getApiToken() (token string, err error) {
 	return getFileStringContent("./telegramApiToken.txt")
 }
 
-func sendMessage(bot *tgbotapi.BotAPI, chatId int64, message string) {
-	msg := tgbotapi.NewMessage(chatId, message)
-	msg.ParseMode = "HTML"
-	bot.Send(msg)
-}
 
-type userState int
 
-const (
-	Normal userState = iota
-	WaitingText
-	WaitingVariants
-	WaitingRules
-)
-
-type configuration struct {
-	Language    string
-	Moderators  []int64
-	ExtendedLog bool
-}
-
-func loadConfig(path string) (config configuration, err error) {
+func loadConfig(path string) (config processing.StaticConfiguration, err error) {
 	jsonString, err := getFileStringContent(path)
 	if err == nil {
 		dec := json.NewDecoder(strings.NewReader(jsonString))
@@ -60,14 +42,14 @@ func loadConfig(path string) (config configuration, err error) {
 	return
 }
 
-func updateTimers(staticData *staticProccessStructs, mutex *sync.Mutex) {
-	questions := staticData.db.GetActiveQuestions()
+func updateTimers(staticData *processing.StaticProccessStructs, mutex *sync.Mutex) {
+	questions := staticData.Db.GetActiveQuestions()
 
 	mutex.Lock()
 	for _, questionId := range questions {
-		_, _, endTime := staticData.db.GetQuestionRules(questionId)
+		_, _, endTime := staticData.Db.GetQuestionRules(questionId)
 		if endTime > 0 {
-			staticData.timers[questionId] = time.Unix(endTime, 0)
+			staticData.Timers[questionId] = time.Unix(endTime, 0)
 		}
 	}
 	mutex.Unlock()
@@ -75,9 +57,9 @@ func updateTimers(staticData *staticProccessStructs, mutex *sync.Mutex) {
 	for {
 		currentTime := time.Now()
 		mutex.Lock()
-		for questionId, endTime := range staticData.timers {
+		for questionId, endTime := range staticData.Timers {
 			if endTime.Sub(currentTime).Seconds() < 0.0 {
-				delete(staticData.timers, questionId)
+				delete(staticData.Timers, questionId)
 				processTimer(staticData, questionId)
 			}
 		}
@@ -86,18 +68,18 @@ func updateTimers(staticData *staticProccessStructs, mutex *sync.Mutex) {
 	}
 }
 
-func updateBot(staticData *staticProccessStructs, mutex *sync.Mutex) {
+func updateBot(staticData *processing.StaticProccessStructs, mutex *sync.Mutex) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
-	updates, err := staticData.bot.GetUpdatesChan(u)
+	updates, err := staticData.Bot.GetUpdatesChan(u)
 
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	staticData.processors = makeUserCommandProcessors()
-	staticData.moderatorProcessors = makeModeratorCommandProcessors()
+	staticData.Processors = makeUserCommandProcessors()
+	staticData.ModeratorProcessors = makeModeratorCommandProcessors()
 
 	for update := range updates {
 		if update.Message == nil {
@@ -144,19 +126,19 @@ func main() {
 
 	database.UpdateVersion(db)
 
-	userStates := make(map[int64]userState)
+	userStates := make(map[int64]processing.UserState)
 
 	timers := make(map[int64]time.Time)
 
 	mutex := &sync.Mutex{}
 
-	staticData := &staticProccessStructs{
-		bot:        bot,
-		db:         db,
-		config:     &config,
-		timers:     timers,
-		trans:      t,
-		userStates: userStates,
+	staticData := &processing.StaticProccessStructs{
+		Bot:        bot,
+		Db:         db,
+		Config:     &config,
+		Timers:     timers,
+		Trans:      t,
+		UserStates: userStates,
 	}
 
 	go updateTimers(staticData, mutex)

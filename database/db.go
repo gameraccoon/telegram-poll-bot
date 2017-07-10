@@ -804,7 +804,8 @@ func (database *Database) GetDatabaseVersion() (version string) {
 			log.Fatal(err.Error())
 		}
 	} else {
-		version = minimalVersion
+		// that means it's a new clean database
+		version = latestVersion
 	}
 
 	return

@@ -1,12 +1,12 @@
-package dialogFactory
+package dialogFactories
 
 import (
 	"github.com/gameraccoon/telegram-poll-bot/processing"
-	"github.com/gameraccoon/telegram-poll-bot/dialogs"
+	"github.com/gameraccoon/telegram-poll-bot/dialog"
 )
 
 type variantPrototype struct {
-	name string
+	text string
 	// nil if the variant is always active
 	isActiveFn func(data *processing.ProcessData) bool
 	process func(data *processing.ProcessData)
@@ -17,11 +17,12 @@ type DialogFactory struct {
 	variants map[string]variantPrototype
 }
 
-func (dialogFactory *DialogFactory) MakeDialog(data *processing.ProcessData) string {
-	dialog := Dialog {
-		text : dialogFactory.getText(data),
-		variants : dialogFactory.getVariants(data)
+func (dialogFactory *DialogFactory) MakeDialog(data *processing.ProcessData) dialog.Dialog {
+	dialog := dialog.Dialog {
+		Text : dialogFactory.getText(data),
+		Variants : dialogFactory.getVariants(data),
 	}
+	return dialog
 }
 
 func (dialogFactory *DialogFactory) getText(data *processing.ProcessData) string {
@@ -34,10 +35,11 @@ func (dialogFactory *DialogFactory) getText(data *processing.ProcessData) string
 
 func (dialogFactory *DialogFactory) getVariants(data *processing.ProcessData) (variants map[string]string) {
 	for id, variant := range dialogFactory.variants {
-		if variant.IsActive() {
+		if variant.isActive() {
 			variants[variant.name] = variant.text
 		}
 	}
+	return
 }
 
 func (dialog *DialogFactory) ProcessVariant(id string, data *processing.ProcessData) {
@@ -47,11 +49,11 @@ func (dialog *DialogFactory) ProcessVariant(id string, data *processing.ProcessD
 	}
 }
 
-func (variant *cariantPrototype) isActive(data *processing.ProcessData) bool {
-	if variant.isActive != nil {
-		return variant.isActive(data)
+func (variant *variantPrototype) isActive(data *processing.ProcessData) bool {
+	if variant.isActiveFn != nil {
+		return variant.isActiveFn(data)
 	}
 	
-	// return true because isActive hasn't set
+	// return true because isActiveFn hasn't set
 	return true
 }

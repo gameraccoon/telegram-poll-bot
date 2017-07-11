@@ -1,10 +1,6 @@
 package processing
 
 import (
-	"bytes"
-	"fmt"
-	"github.com/gameraccoon/telegram-poll-bot/database"
-	"github.com/gameraccoon/telegram-poll-bot/chat/telegram"
 	"github.com/nicksnyder/go-i18n/i18n"
 	"time"
 )
@@ -12,7 +8,7 @@ import (
 func ProcessNextQuestion(data *ProcessData) {
 	if data.Static.Db.IsUserHasPendingQuestions(data.UserId) {
 		nextQuestion := data.Static.Db.GetUserNextQuestion(data.UserId)
-		telegram.SendQuestion(data.Static.Bot, data.Static.Db, nextQuestion, []int64{data.ChatId})
+		data.Static.Chat.SendQuestion(data.Static.Db, nextQuestion, []int64{data.ChatId})
 	} else {
 		data.Static.Db.MarkUserReady(data.UserId)
 	}
@@ -20,7 +16,7 @@ func ProcessNextQuestion(data *ProcessData) {
 
 func CommitQuestion(data *ProcessData, questionId int64) {
 	data.Static.Db.CommitQuestion(questionId)
-	telegram.SendMessage(data.Static.Bot, data.ChatId, data.Static.Trans("say_question_commited"))
+	data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("say_question_commited"))
 
 	minAnswers, maxAnswers, durationTime := data.Static.Db.GetQuestionRules(questionId)
 
@@ -33,7 +29,7 @@ func CommitQuestion(data *ProcessData, questionId int64) {
 
 	users := data.Static.Db.GetReadyUsersChatIds()
 
-	telegram.SendQuestion(data.Static.Bot, data.Static.Db, questionId, users)
+	data.Static.Chat.SendQuestion(data.Static.Db, questionId, users)
 }
 
 func GetQuestionRulesText(minAnswers int, maxAnswers int, time int64, answersTag string, trans i18n.TranslateFunc) string {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/gameraccoon/telegram-poll-bot/telegramChat"
 	"github.com/gameraccoon/telegram-poll-bot/database"
 	"github.com/gameraccoon/telegram-poll-bot/processing"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
@@ -68,11 +69,11 @@ func updateTimers(staticData *processing.StaticProccessStructs, mutex *sync.Mute
 	}
 }
 
-func updateBot(staticData *processing.StaticProccessStructs, mutex *sync.Mutex) {
+func updateBot(bot *tgbotapi.BotAPI, staticData *processing.StaticProccessStructs, mutex *sync.Mutex) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
-	updates, err := staticData.Bot.GetUpdatesChan(u)
+	updates, err := bot.GetUpdatesChan(u)
 
 	if err != nil {
 		log.Fatal(err.Error())
@@ -97,24 +98,15 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	bot, err := tgbotapi.NewBotAPI(apiToken)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
 	config, err := loadConfig("./config.json")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	bot.Debug = config.ExtendedLog
-
 	t, err := i18n.Tfunc(config.Language)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-
-	log.Printf("Authorized on account %s", bot.Self.UserName)
 
 	db := &database.Database{}
 	err = db.Connect("./polls-data.db")
@@ -132,8 +124,17 @@ func main() {
 
 	mutex := &sync.Mutex{}
 
+	chat, err := telegramChat.MakeTelegramChat(apiToken)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	log.Printf("Authorized on account %s", chat.GetBotUsername())
+	
+	chat.SetDebugModeEnabled(config.ExtendedLog)
+
 	staticData := &processing.StaticProccessStructs{
-		Bot:        bot,
+		Chat: chat,
 		Db:         db,
 		Config:     &config,
 		Timers:     timers,
@@ -142,5 +143,5 @@ func main() {
 	}
 
 	go updateTimers(staticData, mutex)
-	updateBot(staticData, mutex)
+	updateBot(chat.GetBot(), staticData, mutex)
 }

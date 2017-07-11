@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/gameraccoon/telegram-poll-bot/database"
 	"github.com/gameraccoon/telegram-poll-bot/processing"
-	"github.com/gameraccoon/telegram-poll-bot/chat/telegram"
+	"github.com/gameraccoon/telegram-poll-bot/telegramChat"
 	//"github.com/gameraccoon/telegram-poll-bot/dialog"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
 	"strconv"

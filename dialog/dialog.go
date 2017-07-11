@@ -1,6 +1,6 @@
 package dialog
 
 type Dialog struct {
-	text string
-	variants map[string]string
+	Text string
+	Variants map[string]string
 }

@@ -1,4 +1,4 @@
-package dialog
+package dialogFactories
 
 type Question struct {
 	text string

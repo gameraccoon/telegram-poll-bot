@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/gameraccoon/telegram-poll-bot/database"
 	"github.com/gameraccoon/telegram-poll-bot/processing"
-	"github.com/gameraccoon/telegram-poll-bot/telegramChat"
+	//"github.com/gameraccoon/telegram-poll-bot/telegramChat"
 	//"github.com/gameraccoon/telegram-poll-bot/dialog"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
 	"strconv"
@@ -112,7 +112,7 @@ func getDificientDataForQuestionText(staticData *processing.StaticProccessStruct
 
 func sendAnswerFeedback(data *processing.ProcessData, questionId int64) {
 	if isQuestionReadyToBeCompleted(data.Static, questionId) {
-		staticData.Chat.SendMessage(data.ChatId, data.Static.Trans("say_answer_added"))
+		data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("say_answer_added"))
 		return
 	}
 

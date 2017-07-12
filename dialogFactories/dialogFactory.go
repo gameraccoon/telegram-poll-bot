@@ -35,8 +35,8 @@ func (dialogFactory *DialogFactory) getText(data *processing.ProcessData) string
 
 func (dialogFactory *DialogFactory) getVariants(data *processing.ProcessData) (variants map[string]string) {
 	for id, variant := range dialogFactory.variants {
-		if variant.isActive() {
-			variants[variant.name] = variant.text
+		if variant.isActive(data) {
+			variants[id] = variant.text
 		}
 	}
 	return

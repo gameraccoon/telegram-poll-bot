@@ -9,7 +9,7 @@ type DialogManager struct {
 	dialogs map[string]*dialog.Dialog
 }
 
-func (dialogManager *DialogManager) RegisterDialog(id string, dialog *Dialog) {
+func (dialogManager *DialogManager) RegisterDialog(id string, dialog *dialog.Dialog) {
 	dialogManager.dialogs[id] = dialog
 }
 

@@ -6,37 +6,36 @@ import (
 	"github.com/gameraccoon/telegram-poll-bot/processing"
 )
 
-func GetQuestionEditDialog() Dialog {
-	return Dialog {
-		text : "",
-		getText : getEditingGuide,
-		variants : map[string]Variant {
-			"st" : Variant {
-				name : "editing_commands_text",
-				isActive : nil,
+func MakeQuestionEditDialogFactory() DialogFactory {
+	return DialogFactory {
+		getTextFn : getEditingGuide,
+		variants : map[string]variantPrototype {
+			"st" : variantPrototype {
+				text : "editing_commands_text",
+				isActiveFn : nil,
 				process : setTextCommand,
 			},
-			"sv" : Variant {
-				name : "editing_commands_variants",
-				isActive : nil,
+			"sv" : variantPrototype {
+				text : "editing_commands_variants",
+				isActiveFn : nil,
 				process : setVariantsCommand,
 			},
-			"sr" : Variant {
-				name : "editing_commands_rules",
-				isActive : nil,
+			"sr" : variantPrototype {
+				text : "editing_commands_rules",
+				isActiveFn : nil,
 				process : setRulesCommand,
 			},
-			"co" : Variant {
-				name : "editing_commands_commit",
-				isActive : func(data *processing.ProcessData) bool {
+			"co" : variantPrototype {
+				text : "editing_commands_commit",
+				isActiveFn : func(data *processing.ProcessData) bool {
 					questionId := data.Static.Db.GetUserEditingQuestion(data.UserId)
 					return data.Static.Db.IsQuestionReady(questionId)
 				},
 				process : commitQuestionCommand,
 			},
-			"qi" : Variant {
-				name : "editing_commands_discard",
-				isActive : nil,
+			"qi" : variantPrototype {
+				text : "editing_commands_discard",
+				isActiveFn : nil,
 				process : discardQuestionCommand,
 			},
 		},
@@ -85,7 +84,7 @@ func commitQuestionCommand(data *processing.ProcessData) {
 		if data.Static.Db.IsQuestionReady(questionId) && data.Static.Db.GetQuestionVariantsCount(questionId) > 0 {
 			processing.CommitQuestion(data, questionId)
 		} else {
-			data.Static.Chat.SendMessage(ddata.ChatId, data.Static.Trans("warn_question_not_ready"))
+			data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("warn_question_not_ready"))
 		}
 	} else {
 		data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("warn_not_editing_question"))

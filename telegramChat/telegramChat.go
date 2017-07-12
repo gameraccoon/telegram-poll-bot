@@ -12,14 +12,14 @@ type TelegramChat struct {
 	bot *tgbotapi.BotAPI
 }
 
-func MakeTelegramChat(apiToken string) (bot TelegramChat, outErr error) {
+func MakeTelegramChat(apiToken string) (bot *TelegramChat, outErr error) {
 	newBot, err := tgbotapi.NewBotAPI(apiToken)
 	if err != nil {
 		outErr = err
 		return
 	}
 	
-	bot = TelegramChat {
+	bot = &TelegramChat {
 		bot: newBot,
 	}
 	

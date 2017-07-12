@@ -7,36 +7,36 @@ import (
 )
 
 func MakeQuestionEditDialogFactory() DialogFactory {
-	return DialogFactory {
-		getTextFn : getEditingGuide,
-		variants : map[string]variantPrototype {
-			"st" : variantPrototype {
-				text : "editing_commands_text",
-				isActiveFn : nil,
-				process : setTextCommand,
+	return DialogFactory{
+		getTextFn: getEditingGuide,
+		variants: map[string]variantPrototype{
+			"st": variantPrototype{
+				text:       "editing_commands_text",
+				isActiveFn: nil,
+				process:    setTextCommand,
 			},
-			"sv" : variantPrototype {
-				text : "editing_commands_variants",
-				isActiveFn : nil,
-				process : setVariantsCommand,
+			"sv": variantPrototype{
+				text:       "editing_commands_variants",
+				isActiveFn: nil,
+				process:    setVariantsCommand,
 			},
-			"sr" : variantPrototype {
-				text : "editing_commands_rules",
-				isActiveFn : nil,
-				process : setRulesCommand,
+			"sr": variantPrototype{
+				text:       "editing_commands_rules",
+				isActiveFn: nil,
+				process:    setRulesCommand,
 			},
-			"co" : variantPrototype {
-				text : "editing_commands_commit",
-				isActiveFn : func(data *processing.ProcessData) bool {
+			"co": variantPrototype{
+				text: "editing_commands_commit",
+				isActiveFn: func(data *processing.ProcessData) bool {
 					questionId := data.Static.Db.GetUserEditingQuestion(data.UserId)
 					return data.Static.Db.IsQuestionReady(questionId)
 				},
-				process : commitQuestionCommand,
+				process: commitQuestionCommand,
 			},
-			"qi" : variantPrototype {
-				text : "editing_commands_discard",
-				isActiveFn : nil,
-				process : discardQuestionCommand,
+			"qi": variantPrototype{
+				text:       "editing_commands_discard",
+				isActiveFn: nil,
+				process:    discardQuestionCommand,
 			},
 		},
 	}
@@ -133,6 +133,6 @@ func getEditingGuide(data *processing.ProcessData) string {
 	} else {
 		buffer.WriteString(data.Static.Trans("not_set"))
 	}
-	
+
 	return buffer.String()
 }

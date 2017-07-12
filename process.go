@@ -259,7 +259,6 @@ func moderatorSendCommand(data *processing.ProcessData) {
 	}
 }
 
-
 func setVariants(db *database.Database, questionId int64, message *string) (ok bool) {
 	variants := strings.Split(*message, "\n")
 	db.SetQuestionVariants(questionId, variants)
@@ -324,13 +323,12 @@ func setRules(db *database.Database, questionId int64, message *string) (ok bool
 	return true
 }
 
-
 func makeUserCommandProcessors() map[string]func(*processing.ProcessData) {
 	return map[string]func(*processing.ProcessData){
-		"start":            startCommand,
-		"add_question":     addQuestionCommand,
-		"last_results":     lastResultsCommand,
-		"my_questions":     myQuestionsCommand,
+		"start":        startCommand,
+		"add_question": addQuestionCommand,
+		"last_results": lastResultsCommand,
+		"my_questions": myQuestionsCommand,
 	}
 }
 

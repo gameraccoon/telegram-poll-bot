@@ -18,11 +18,11 @@ func MakeTelegramChat(apiToken string) (bot *TelegramChat, outErr error) {
 		outErr = err
 		return
 	}
-	
-	bot = &TelegramChat {
+
+	bot = &TelegramChat{
 		bot: newBot,
 	}
-	
+
 	return
 }
 
@@ -65,5 +65,5 @@ func (telegramChat *TelegramChat) SendQuestion(db *database.Database, questionId
 }
 
 func (telegramChat *TelegramChat) SendDialog(dialog *dialog.Dialog, chatId int64) {
-	
+
 }

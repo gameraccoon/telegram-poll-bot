@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/gameraccoon/telegram-poll-bot/telegramChat"
 	"github.com/gameraccoon/telegram-poll-bot/database"
 	"github.com/gameraccoon/telegram-poll-bot/processing"
+	"github.com/gameraccoon/telegram-poll-bot/telegramChat"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/nicksnyder/go-i18n/i18n"
 	"io/ioutil"
@@ -31,8 +31,6 @@ func getFileStringContent(filePath string) (content string, err error) {
 func getApiToken() (token string, err error) {
 	return getFileStringContent("./telegramApiToken.txt")
 }
-
-
 
 func loadConfig(path string) (config processing.StaticConfiguration, err error) {
 	jsonString, err := getFileStringContent(path)
@@ -130,11 +128,11 @@ func main() {
 	}
 
 	log.Printf("Authorized on account %s", chat.GetBotUsername())
-	
+
 	chat.SetDebugModeEnabled(config.ExtendedLog)
 
 	staticData := &processing.StaticProccessStructs{
-		Chat: chat,
+		Chat:       chat,
 		Db:         db,
 		Config:     &config,
 		Timers:     timers,

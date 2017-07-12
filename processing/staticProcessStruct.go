@@ -17,18 +17,18 @@ const (
 )
 
 type StaticConfiguration struct {
-	Language string
-	Moderators []int64
+	Language    string
+	Moderators  []int64
 	ExtendedLog bool
 }
 
 type StaticProccessStructs struct {
-	Chat chat.Chat
-	Db *database.Database
-	UserStates map[int64]UserState
-	Timers map[int64]time.Time
-	Config *StaticConfiguration
-	Trans i18n.TranslateFunc
-	Processors map[string]func(*ProcessData)
+	Chat                chat.Chat
+	Db                  *database.Database
+	UserStates          map[int64]UserState
+	Timers              map[int64]time.Time
+	Config              *StaticConfiguration
+	Trans               i18n.TranslateFunc
+	Processors          map[string]func(*ProcessData)
 	ModeratorProcessors map[string]func(*ProcessData)
 }

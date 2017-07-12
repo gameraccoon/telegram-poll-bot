@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"github.com/gameraccoon/telegram-poll-bot/database"
+	"github.com/gameraccoon/telegram-poll-bot/dialogFactories"
 	"github.com/gameraccoon/telegram-poll-bot/processing"
 	"github.com/gameraccoon/telegram-poll-bot/telegramChat"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
@@ -67,7 +68,7 @@ func updateTimers(staticData *processing.StaticProccessStructs, mutex *sync.Mute
 	}
 }
 
-func updateBot(bot *tgbotapi.BotAPI, staticData *processing.StaticProccessStructs, mutex *sync.Mutex) {
+func updateBot(bot *tgbotapi.BotAPI, staticData *processing.StaticProccessStructs, dialogManager *dialogFactories.DialogManager, mutex *sync.Mutex) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
@@ -85,7 +86,7 @@ func updateBot(bot *tgbotapi.BotAPI, staticData *processing.StaticProccessStruct
 			continue
 		}
 		mutex.Lock()
-		processUpdate(&update, staticData)
+		processUpdate(&update, staticData, dialogManager)
 		mutex.Unlock()
 	}
 }
@@ -131,6 +132,9 @@ func main() {
 
 	chat.SetDebugModeEnabled(config.ExtendedLog)
 
+	dialogManager := &(dialogFactories.DialogManager{})
+	dialogManager.RegisterDialogFactory("ed", dialogFactories.MakeQuestionEditDialogFactory())
+
 	staticData := &processing.StaticProccessStructs{
 		Chat:       chat,
 		Db:         db,
@@ -141,5 +145,5 @@ func main() {
 	}
 
 	go updateTimers(staticData, mutex)
-	updateBot(chat.GetBot(), staticData, mutex)
+	updateBot(chat.GetBot(), staticData, dialogManager, mutex)
 }

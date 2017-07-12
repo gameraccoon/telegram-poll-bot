@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/gameraccoon/telegram-poll-bot/database"
+	"github.com/gameraccoon/telegram-poll-bot/dialogFactories"
 	"github.com/gameraccoon/telegram-poll-bot/processing"
 	//"github.com/gameraccoon/telegram-poll-bot/telegramChat"
 	//"github.com/gameraccoon/telegram-poll-bot/dialog"
@@ -358,10 +359,19 @@ func processCommandByProcessors(data *processing.ProcessData, processors map[str
 	return ok
 }
 
-func processCommand(data *processing.ProcessData) {
+func processCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	if strings.HasPrefix(data.Command, "m_") && isUserModerator(data.ChatId, data.Static.Config) {
 		processed := processCommandByProcessors(data, data.Static.ModeratorProcessors)
 		if processed {
+			return
+		}
+	}
+
+	ids := strings.Split(data.Command, "_")
+	if len(ids) >= 2 {
+		factory := dialogManager.GetDialogFactory(ids[0])
+		if factory != nil {
+			factory.ProcessVariant(ids[1], data)
 			return
 		}
 	}
@@ -464,7 +474,7 @@ func processPlainMessage(data *processing.ProcessData) {
 	}
 }
 
-func processUpdate(update *tgbotapi.Update, staticData *processing.StaticProccessStructs) {
+func processUpdate(update *tgbotapi.Update, staticData *processing.StaticProccessStructs, dialogManager *dialogFactories.DialogManager) {
 	data := processing.ProcessData{
 		Static: staticData,
 		ChatId: update.Message.Chat.ID,
@@ -482,7 +492,7 @@ func processUpdate(update *tgbotapi.Update, staticData *processing.StaticProcces
 			data.Command = message[1:]
 		}
 
-		processCommand(&data)
+		processCommand(&data, dialogManager)
 	} else {
 		data.Message = message
 		processPlainMessage(&data)

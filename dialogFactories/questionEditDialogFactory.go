@@ -6,8 +6,8 @@ import (
 	"github.com/gameraccoon/telegram-poll-bot/processing"
 )
 
-func MakeQuestionEditDialogFactory() DialogFactory {
-	return DialogFactory{
+func MakeQuestionEditDialogFactory() *DialogFactory {
+	return &(DialogFactory{
 		getTextFn: getEditingGuide,
 		variants: map[string]variantPrototype{
 			"st": variantPrototype{
@@ -39,7 +39,7 @@ func MakeQuestionEditDialogFactory() DialogFactory {
 				process:    discardQuestionCommand,
 			},
 		},
-	}
+	})
 }
 
 func setTextCommand(data *processing.ProcessData) {

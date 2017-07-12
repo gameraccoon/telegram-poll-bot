@@ -1,22 +1,17 @@
 package dialogFactories
 
-import (
-	//"github.com/gameraccoon/telegram-poll-bot/processing"
-	"github.com/gameraccoon/telegram-poll-bot/dialog"
-)
-
 type DialogManager struct {
-	dialogs map[string]*dialog.Dialog
+	dialogs map[string]*DialogFactory
 }
 
-func (dialogManager *DialogManager) RegisterDialog(id string, dialog *dialog.Dialog) {
-	dialogManager.dialogs[id] = dialog
+func (dialogManager *DialogManager) RegisterDialogFactory(id string, dialogFactory *DialogFactory) {
+	dialogManager.dialogs[id] = dialogFactory
 }
 
-func (dialogManager *DialogManager) GetDialog(id string) *dialog.Dialog {
-	dialog, ok := dialogManager.dialogs[id]
-	if ok && dialog != nil {
-		return dialog
+func (dialogManager *DialogManager) GetDialogFactory(id string) *DialogFactory {
+	dialogFactory, ok := dialogManager.dialogs[id]
+	if ok && dialogFactory != nil {
+		return dialogFactory
 	} else {
 		return nil
 	}

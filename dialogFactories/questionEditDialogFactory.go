@@ -10,23 +10,27 @@ import (
 func MakeQuestionEditDialogFactory(trans i18n.TranslateFunc) *DialogFactory {
 	return &(DialogFactory{
 		getTextFn: getEditingGuide,
-		variants: map[string]variantPrototype{
-			"st": variantPrototype{
+		variants: []variantPrototype{
+			variantPrototype{
+				id:         "st",
 				text:       trans("editing_commands_text"),
 				isActiveFn: nil,
 				process:    setTextCommand,
 			},
-			"sv": variantPrototype{
+			variantPrototype{
+				id:         "sv",
 				text:       trans("editing_commands_variants"),
 				isActiveFn: nil,
 				process:    setVariantsCommand,
 			},
-			"sr": variantPrototype{
+			variantPrototype{
+				id:         "sr",
 				text:       trans("editing_commands_rules"),
 				isActiveFn: nil,
 				process:    setRulesCommand,
 			},
-			"co": variantPrototype{
+			variantPrototype{
+				id:   "co",
 				text: trans("editing_commands_commit"),
 				isActiveFn: func(data *processing.ProcessData) bool {
 					questionId := data.Static.Db.GetUserEditingQuestion(data.UserId)
@@ -34,7 +38,8 @@ func MakeQuestionEditDialogFactory(trans i18n.TranslateFunc) *DialogFactory {
 				},
 				process: commitQuestionCommand,
 			},
-			"qi": variantPrototype{
+			variantPrototype{
+				id:         "qi",
 				text:       trans("editing_commands_discard"),
 				isActiveFn: nil,
 				process:    discardQuestionCommand,

@@ -6,6 +6,7 @@ import (
 )
 
 type variantPrototype struct {
+	id   string
 	text string
 	// nil if the variant is always active
 	isActiveFn func(data *processing.ProcessData) bool
@@ -15,7 +16,7 @@ type variantPrototype struct {
 type DialogFactory struct {
 	id        string
 	getTextFn func(data *processing.ProcessData) string
-	variants  map[string]variantPrototype
+	variants  []variantPrototype
 }
 
 func (dialogFactory *DialogFactory) MakeDialog(data *processing.ProcessData) *dialog.Dialog {
@@ -28,9 +29,10 @@ func (dialogFactory *DialogFactory) MakeDialog(data *processing.ProcessData) *di
 }
 
 func (dialog *DialogFactory) ProcessVariant(id string, data *processing.ProcessData) {
-	variant, isVariantAvailable := dialog.variants[id]
-	if isVariantAvailable {
-		variant.process(data)
+	for _, variant := range dialog.variants {
+		if variant.id == id {
+			variant.process(data)
+		}
 	}
 }
 
@@ -42,13 +44,17 @@ func (dialogFactory *DialogFactory) getText(data *processing.ProcessData) string
 	}
 }
 
-func (dialogFactory *DialogFactory) getVariants(data *processing.ProcessData) (variants map[string]string) {
-	for id, variant := range dialogFactory.variants {
+func (dialogFactory *DialogFactory) getVariants(data *processing.ProcessData) (variants []dialog.Variant) {
+	for _, variant := range dialogFactory.variants {
 		if variant.isActive(data) {
 			if variants == nil {
-				variants = make(map[string]string)
+				variants = make([]dialog.Variant, 0)
 			}
-			variants[id] = variant.text
+
+			variants = append(variants, dialog.Variant{
+				Id:   variant.id,
+				Text: variant.text,
+			})
 		}
 	}
 	return

@@ -73,8 +73,8 @@ func (telegramChat *TelegramChat) SendDialog(dialog *dialog.Dialog, chatId int64
 
 	buffer.WriteString(dialog.Text)
 
-	for id, variantText := range dialog.Variants {
-		appendCommand(&buffer, dialog.Id, id, variantText)
+	for _, variant := range dialog.Variants {
+		appendCommand(&buffer, dialog.Id, variant.Id, variant.Text)
 	}
 
 	telegramChat.SendMessage(chatId, buffer.String())

@@ -4,29 +4,30 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/gameraccoon/telegram-poll-bot/processing"
+	"github.com/nicksnyder/go-i18n/i18n"
 )
 
-func MakeQuestionEditDialogFactory() *DialogFactory {
+func MakeQuestionEditDialogFactory(trans i18n.TranslateFunc) *DialogFactory {
 	return &(DialogFactory{
 		getTextFn: getEditingGuide,
 		variants: map[string]variantPrototype{
 			"st": variantPrototype{
-				text:       "editing_commands_text",
+				text:       trans("editing_commands_text"),
 				isActiveFn: nil,
 				process:    setTextCommand,
 			},
 			"sv": variantPrototype{
-				text:       "editing_commands_variants",
+				text:       trans("editing_commands_variants"),
 				isActiveFn: nil,
 				process:    setVariantsCommand,
 			},
 			"sr": variantPrototype{
-				text:       "editing_commands_rules",
+				text:       trans("editing_commands_rules"),
 				isActiveFn: nil,
 				process:    setRulesCommand,
 			},
 			"co": variantPrototype{
-				text: "editing_commands_commit",
+				text: trans("editing_commands_commit"),
 				isActiveFn: func(data *processing.ProcessData) bool {
 					questionId := data.Static.Db.GetUserEditingQuestion(data.UserId)
 					return data.Static.Db.IsQuestionReady(questionId)
@@ -34,7 +35,7 @@ func MakeQuestionEditDialogFactory() *DialogFactory {
 				process: commitQuestionCommand,
 			},
 			"qi": variantPrototype{
-				text:       "editing_commands_discard",
+				text:       trans("editing_commands_discard"),
 				isActiveFn: nil,
 				process:    discardQuestionCommand,
 			},

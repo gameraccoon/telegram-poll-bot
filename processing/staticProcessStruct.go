@@ -23,12 +23,10 @@ type StaticConfiguration struct {
 }
 
 type StaticProccessStructs struct {
-	Chat                chat.Chat
-	Db                  *database.Database
-	UserStates          map[int64]UserState
-	Timers              map[int64]time.Time
-	Config              *StaticConfiguration
-	Trans               i18n.TranslateFunc
-	Processors          map[string]func(*ProcessData)
-	ModeratorProcessors map[string]func(*ProcessData)
+	Chat       chat.Chat
+	Db         *database.Database
+	UserStates map[int64]UserState
+	Timers     map[int64]time.Time
+	Config     *StaticConfiguration
+	Trans      i18n.TranslateFunc
 }

@@ -14,6 +14,15 @@ import (
 	"time"
 )
 
+type ProcessorFunc func(*processing.ProcessData, *dialogFactories.DialogManager)
+
+type ProcessorFuncMap map[string]ProcessorFunc
+
+type Processors struct {
+	Main      ProcessorFuncMap
+	Moderator ProcessorFuncMap
+}
+
 func sendResults(staticData *processing.StaticProccessStructs, questionId int64, chatIds []int64) {
 	variants := staticData.Db.GetQuestionVariants(questionId)
 	answers := staticData.Db.GetQuestionAnswers(questionId)
@@ -161,7 +170,14 @@ func parseAnswer(data *processing.ProcessData) {
 	}
 }
 
-func addQuestionCommand(data *processing.ProcessData) {
+func sendEditingGuide(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
+	dialog := dialogManager.MakeDialog("ed", data)
+	if dialog != nil {
+		data.Static.Chat.SendDialog(dialog, data.ChatId)
+	}
+}
+
+func addQuestionCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	if data.Static.Db.IsUserBanned(data.UserId) {
 		data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("warn_youre_banned"))
 		return
@@ -172,15 +188,11 @@ func addQuestionCommand(data *processing.ProcessData) {
 		data.Static.UserStates[data.ChatId] = processing.WaitingText
 		data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("ask_question_text"))
 	} else {
-		//processing.SendEditingGuide(data)
+		sendEditingGuide(data, dialogManager)
 	}
 }
 
-func appendCommand(buffer *bytes.Buffer, command string, description string) {
-	buffer.WriteString(fmt.Sprintf("\n%s - %s", command, description))
-}
-
-func startCommand(data *processing.ProcessData) {
+func startCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("hello_message"))
 	if !data.Static.Db.IsUserHasPendingQuestions(data.UserId) {
 		data.Static.Db.InitNewUserQuestions(data.UserId)
@@ -189,14 +201,14 @@ func startCommand(data *processing.ProcessData) {
 	}
 }
 
-func lastResultsCommand(data *processing.ProcessData) {
+func lastResultsCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	questions := data.Static.Db.GetLastFinishedQuestions(10)
 	for _, questionId := range questions {
 		sendResults(data.Static, questionId, []int64{data.ChatId})
 	}
 }
 
-func myQuestionsCommand(data *processing.ProcessData) {
+func myQuestionsCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	questionsIds := data.Static.Db.GetUserLastQuestions(data.UserId, 10)
 	finishedQuestionsIds := data.Static.Db.GetUserLastFinishedQuestions(data.UserId, 10)
 
@@ -217,7 +229,7 @@ func myQuestionsCommand(data *processing.ProcessData) {
 	}
 }
 
-func moderatorListCommand(data *processing.ProcessData) {
+func moderatorListCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	questions := data.Static.Db.GetLastPublishedQuestions(15)
 	var buffer bytes.Buffer
 	for _, question := range questions {
@@ -226,7 +238,7 @@ func moderatorListCommand(data *processing.ProcessData) {
 	data.Static.Chat.SendMessage(data.ChatId, buffer.String())
 }
 
-func moderatorBanCommand(data *processing.ProcessData) {
+func moderatorBanCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	questionId, err := strconv.ParseInt(data.Message, 10, 64)
 
 	if err != nil {
@@ -241,7 +253,7 @@ func moderatorBanCommand(data *processing.ProcessData) {
 	data.Static.Chat.SendMessage(data.ChatId, fmt.Sprintf("banned: %d", author))
 }
 
-func moderatorRemoveCommand(data *processing.ProcessData) {
+func moderatorRemoveCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	questionId, err := strconv.ParseInt(data.Message, 10, 64)
 
 	if err != nil {
@@ -253,7 +265,7 @@ func moderatorRemoveCommand(data *processing.ProcessData) {
 	data.Static.Chat.SendMessage(data.ChatId, "removed")
 }
 
-func moderatorSendCommand(data *processing.ProcessData) {
+func moderatorSendCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	chatIds := data.Static.Db.GetAllUsersChatIds()
 	for _, chatId := range chatIds {
 		data.Static.Chat.SendMessage(chatId, data.Message)
@@ -324,8 +336,8 @@ func setRules(db *database.Database, questionId int64, message *string) (ok bool
 	return true
 }
 
-func makeUserCommandProcessors() map[string]func(*processing.ProcessData) {
-	return map[string]func(*processing.ProcessData){
+func makeUserCommandProcessors() ProcessorFuncMap {
+	return map[string]ProcessorFunc{
 		"start":        startCommand,
 		"add_question": addQuestionCommand,
 		"last_results": lastResultsCommand,
@@ -333,8 +345,8 @@ func makeUserCommandProcessors() map[string]func(*processing.ProcessData) {
 	}
 }
 
-func makeModeratorCommandProcessors() map[string]func(*processing.ProcessData) {
-	return map[string]func(*processing.ProcessData){
+func makeModeratorCommandProcessors() ProcessorFuncMap {
+	return map[string]ProcessorFunc{
 		"m_list": moderatorListCommand,
 		"m_ban":  moderatorBanCommand,
 		"m_rm":   moderatorRemoveCommand,
@@ -350,18 +362,18 @@ func processAnswer(data *processing.ProcessData) bool {
 	return false
 }
 
-func processCommandByProcessors(data *processing.ProcessData, processors map[string]func(*processing.ProcessData)) bool {
-	processor, ok := processors[data.Command]
+func processCommandByProcessors(data *processing.ProcessData, processorsMap ProcessorFuncMap, dialogManager *dialogFactories.DialogManager) bool {
+	processor, ok := processorsMap[data.Command]
 	if ok {
-		processor(data)
+		processor(data, dialogManager)
 	}
 
 	return ok
 }
 
-func processCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
+func processCommand(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager, processors *Processors) {
 	if strings.HasPrefix(data.Command, "m_") && isUserModerator(data.ChatId, data.Static.Config) {
-		processed := processCommandByProcessors(data, data.Static.ModeratorProcessors)
+		processed := processCommandByProcessors(data, processors.Moderator, dialogManager)
 		if processed {
 			return
 		}
@@ -369,14 +381,13 @@ func processCommand(data *processing.ProcessData, dialogManager *dialogFactories
 
 	ids := strings.Split(data.Command, "_")
 	if len(ids) >= 2 {
-		factory := dialogManager.GetDialogFactory(ids[0])
-		if factory != nil {
-			factory.ProcessVariant(ids[1], data)
+		processed := dialogManager.ProcessVariant(ids[0], ids[1], data)
+		if processed {
 			return
 		}
 	}
 
-	processed := processCommandByProcessors(data, data.Static.Processors)
+	processed := processCommandByProcessors(data, processors.Main, dialogManager)
 	if processed {
 		return
 	}
@@ -392,7 +403,7 @@ func processCommand(data *processing.ProcessData, dialogManager *dialogFactories
 	// if we here it means that no command was processed
 	data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("warn_unknown_command"))
 	if isEditingQuestion {
-		//sendEditingGuide(data)
+		sendEditingGuide(data, dialogManager)
 	}
 }
 
@@ -406,12 +417,12 @@ func isUserModerator(chatId int64, config *processing.StaticConfiguration) bool 
 	return false
 }
 
-func processSetTextContent(data *processing.ProcessData) {
+func processSetTextContent(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	if data.Static.Db.IsUserEditingQuestion(data.UserId) {
 		questionId := data.Static.Db.GetUserEditingQuestion(data.UserId)
 		data.Static.Db.SetQuestionText(questionId, data.Message)
 		data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("say_text_is_set"))
-		//sendEditingGuide(data)
+		sendEditingGuide(data, dialogManager)
 		delete(data.Static.UserStates, data.ChatId)
 	} else {
 		data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("warn_unknown_command"))
@@ -419,13 +430,13 @@ func processSetTextContent(data *processing.ProcessData) {
 	}
 }
 
-func processSetVariantsContent(data *processing.ProcessData) {
+func processSetVariantsContent(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	if data.Static.Db.IsUserEditingQuestion(data.UserId) {
 		questionId := data.Static.Db.GetUserEditingQuestion(data.UserId)
 		ok := setVariants(data.Static.Db, questionId, &data.Message)
 		if ok {
 			data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("say_variants_is_set"))
-			//sendEditingGuide(data)
+			sendEditingGuide(data, dialogManager)
 			delete(data.Static.UserStates, data.ChatId)
 		} else {
 			data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("warn_bad_variants"))
@@ -436,13 +447,13 @@ func processSetVariantsContent(data *processing.ProcessData) {
 	}
 }
 
-func processSetRulesContent(data *processing.ProcessData) {
+func processSetRulesContent(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	if data.Static.Db.IsUserEditingQuestion(data.UserId) {
 		questionId := data.Static.Db.GetUserEditingQuestion(data.UserId)
 		ok := setRules(data.Static.Db, questionId, &data.Message)
 		if ok {
 			data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("say_rules_is_set"))
-			//sendEditingGuide(data)
+			sendEditingGuide(data, dialogManager)
 			delete(data.Static.UserStates, data.ChatId)
 		} else {
 			data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("warn_bad_rules"))
@@ -453,15 +464,15 @@ func processSetRulesContent(data *processing.ProcessData) {
 	}
 }
 
-func processPlainMessage(data *processing.ProcessData) {
+func processPlainMessage(data *processing.ProcessData, dialogManager *dialogFactories.DialogManager) {
 	if userState, ok := data.Static.UserStates[data.ChatId]; ok {
 		switch userState {
 		case processing.WaitingText:
-			processSetTextContent(data)
+			processSetTextContent(data, dialogManager)
 		case processing.WaitingVariants:
-			processSetVariantsContent(data)
+			processSetVariantsContent(data, dialogManager)
 		case processing.WaitingRules:
-			processSetRulesContent(data)
+			processSetRulesContent(data, dialogManager)
 		default:
 			data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("warn_unknown_command"))
 			delete(data.Static.UserStates, data.ChatId)
@@ -469,12 +480,12 @@ func processPlainMessage(data *processing.ProcessData) {
 	} else {
 		data.Static.Chat.SendMessage(data.ChatId, data.Static.Trans("warn_unknown_command"))
 		if data.Static.Db.IsUserEditingQuestion(data.UserId) {
-			//sendEditingGuide(data)
+			sendEditingGuide(data, dialogManager)
 		}
 	}
 }
 
-func processUpdate(update *tgbotapi.Update, staticData *processing.StaticProccessStructs, dialogManager *dialogFactories.DialogManager) {
+func processUpdate(update *tgbotapi.Update, staticData *processing.StaticProccessStructs, dialogManager *dialogFactories.DialogManager, processors *Processors) {
 	data := processing.ProcessData{
 		Static: staticData,
 		ChatId: update.Message.Chat.ID,
@@ -492,10 +503,10 @@ func processUpdate(update *tgbotapi.Update, staticData *processing.StaticProcces
 			data.Command = message[1:]
 		}
 
-		processCommand(&data, dialogManager)
+		processCommand(&data, dialogManager, processors)
 	} else {
 		data.Message = message
-		processPlainMessage(&data)
+		processPlainMessage(&data, dialogManager)
 	}
 }
 

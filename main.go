@@ -78,15 +78,17 @@ func updateBot(bot *tgbotapi.BotAPI, staticData *processing.StaticProccessStruct
 		log.Fatal(err.Error())
 	}
 
-	staticData.Processors = makeUserCommandProcessors()
-	staticData.ModeratorProcessors = makeModeratorCommandProcessors()
+	processors := Processors{
+		Main:      makeUserCommandProcessors(),
+		Moderator: makeModeratorCommandProcessors(),
+	}
 
 	for update := range updates {
 		if update.Message == nil {
 			continue
 		}
 		mutex.Lock()
-		processUpdate(&update, staticData, dialogManager)
+		processUpdate(&update, staticData, dialogManager, &processors)
 		mutex.Unlock()
 	}
 }
@@ -102,7 +104,7 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	t, err := i18n.Tfunc(config.Language)
+	trans, err := i18n.Tfunc(config.Language)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -133,14 +135,14 @@ func main() {
 	chat.SetDebugModeEnabled(config.ExtendedLog)
 
 	dialogManager := &(dialogFactories.DialogManager{})
-	dialogManager.RegisterDialogFactory("ed", dialogFactories.MakeQuestionEditDialogFactory())
+	dialogManager.RegisterDialogFactory("ed", dialogFactories.MakeQuestionEditDialogFactory(trans))
 
 	staticData := &processing.StaticProccessStructs{
 		Chat:       chat,
 		Db:         db,
 		Config:     &config,
 		Timers:     timers,
-		Trans:      t,
+		Trans:      trans,
 		UserStates: userStates,
 	}
 

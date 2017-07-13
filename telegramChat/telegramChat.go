@@ -64,6 +64,18 @@ func (telegramChat *TelegramChat) SendQuestion(db *database.Database, questionId
 	db.UnmarkUsersReady(usersChatIds)
 }
 
-func (telegramChat *TelegramChat) SendDialog(dialog *dialog.Dialog, chatId int64) {
+func appendCommand(buffer *bytes.Buffer, dialogId string, variantId string, variantText string) {
+	buffer.WriteString(fmt.Sprintf("\n/%s_%s - %s", dialogId, variantId, variantText))
+}
 
+func (telegramChat *TelegramChat) SendDialog(dialog *dialog.Dialog, chatId int64) {
+	var buffer bytes.Buffer
+
+	buffer.WriteString(dialog.Text)
+
+	for id, variantText := range dialog.Variants {
+		appendCommand(&buffer, dialog.Id, id, variantText)
+	}
+
+	telegramChat.SendMessage(chatId, buffer.String())
 }

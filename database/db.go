@@ -1,14 +1,14 @@
 package database
 
 import (
-	"database/sql"
-	_ "github.com/mattn/go-sqlite3"
-	"errors"
-	"log"
-	"fmt"
 	"bytes"
-	"strings"
+	"database/sql"
+	"errors"
+	"fmt"
+	_ "github.com/mattn/go-sqlite3"
+	"log"
 	"strconv"
+	"strings"
 )
 
 func init() {
@@ -57,7 +57,7 @@ func (database *Database) Connect(fileName string) error {
 		",banned INTEGER" +
 		")")
 
-	database.execQuery("CREATE UNIQUE INDEX IF NOT EXISTS"+
+	database.execQuery("CREATE UNIQUE INDEX IF NOT EXISTS" +
 		" chat_id_index ON users(chat_id)")
 
 	database.execQuery("CREATE TABLE IF NOT EXISTS" +
@@ -149,7 +149,7 @@ func (database *Database) createUniqueRecord(table string, values string) int64 
 }
 
 func (database *Database) GetUserId(chatId int64) (userId int64) {
-	database.execQuery(fmt.Sprintf("INSERT OR IGNORE INTO users(chat_id, is_ready) " +
+	database.execQuery(fmt.Sprintf("INSERT OR IGNORE INTO users(chat_id, is_ready) "+
 		"VALUES (%d, 1)", chatId))
 
 	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM users WHERE chat_id=%d", chatId))
@@ -435,22 +435,20 @@ func (database *Database) GetQuestionAnswersCount(questionId int64) (count int) 
 		log.Fatal("No question found")
 	}
 
-
-
 	return
 }
 
 func (database *Database) SetQuestionRules(questionId int64, minVotes int, maxVotes int, time int64) {
-	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET" +
-		" min_votes=%d" +
-		",max_votes=%d" +
-		",end_time=%d" +
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET"+
+		" min_votes=%d"+
+		",max_votes=%d"+
+		",end_time=%d"+
 		" WHERE id=%d", minVotes, maxVotes, time, questionId))
 }
 
 func (database *Database) SetQuestionText(questionId int64, text string) {
-	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET" +
-		" text='%s'" +
+	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET"+
+		" text='%s'"+
 		" WHERE id=%d", sanitizeString(text), questionId))
 }
 
@@ -462,9 +460,9 @@ func (database *Database) SetQuestionVariants(questionId int64, variants []strin
 	var buffer bytes.Buffer
 	count := len(variants)
 	if count > 0 {
-		for i, variant := range(variants) {
+		for i, variant := range variants {
 			buffer.WriteString(fmt.Sprintf("(%d,'%s',0,%d)", questionId, sanitizeString(variant), i))
-			if i < count - 1 {
+			if i < count-1 {
 				buffer.WriteString(",")
 			}
 		}
@@ -577,8 +575,6 @@ func (database *Database) IsQuestionReady(questionId int64) (isReady bool) {
 		log.Fatal("No row found")
 	}
 
-
-
 	return
 }
 
@@ -586,8 +582,8 @@ func (database *Database) CommitQuestion(questionId int64) {
 	database.execQuery(fmt.Sprintf("UPDATE OR ROLLBACK questions SET status=1 WHERE id=%d", questionId))
 
 	// add to pending questions for all users
-	database.conn.Exec(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id) " +
-	"SELECT DISTINCT id, %d FROM users;", questionId))
+	database.conn.Exec(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id) "+
+		"SELECT DISTINCT id, %d FROM users;", questionId))
 }
 
 func (database *Database) DiscardQuestion(questionId int64) {
@@ -610,9 +606,9 @@ func (database *Database) UnmarkUsersReady(chatIds []int64) {
 	count := len(chatIds)
 	if count > 0 {
 		var buffer bytes.Buffer
-		for i, chatId := range(chatIds) {
+		for i, chatId := range chatIds {
 			buffer.WriteString(strconv.FormatInt(chatId, 10))
-			if i < count - 1 {
+			if i < count-1 {
 				buffer.WriteString(",")
 			}
 		}
@@ -626,8 +622,8 @@ func (database *Database) RemoveQuestionFromAllUsers(questionId int64) {
 }
 
 func (database *Database) GetUsersAnsweringQuestionNow(questionId int64) (users []int64) {
-	rows, err := database.conn.Query(fmt.Sprintf("SELECT t.user_id FROM" +
-		" (SELECT user_id, MIN(question_id) as next_question_id FROM pending_questions GROUP BY user_id) as t" +
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT t.user_id FROM"+
+		" (SELECT user_id, MIN(question_id) as next_question_id FROM pending_questions GROUP BY user_id) as t"+
 		" WHERE t.next_question_id=%d", questionId))
 
 	if err != nil {
@@ -760,17 +756,17 @@ func (database *Database) GetActiveQuestions() (activeQuestions []int64) {
 func (database *Database) InitNewUserQuestions(userId int64) {
 	// add to the user all unfinished questions that wasn't answered and already not in pending questions
 	// of this user
-	database.execQuery(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id)" +
-		" SELECT %d, q.id FROM questions as q" +
-		" LEFT JOIN pending_questions as pq ON q.id=pq.question_id AND pq.user_id=%d" +
-		" LEFT JOIN answered_questions as aq ON q.id=aq.question_id AND aq.user_id=%d" +
+	database.execQuery(fmt.Sprintf("INSERT INTO pending_questions (user_id, question_id)"+
+		" SELECT %d, q.id FROM questions as q"+
+		" LEFT JOIN pending_questions as pq ON q.id=pq.question_id AND pq.user_id=%d"+
+		" LEFT JOIN answered_questions as aq ON q.id=aq.question_id AND aq.user_id=%d"+
 		" WHERE pq.user_id IS NULL AND aq.user_id IS NULL AND q.status=1", userId, userId, userId))
 }
 
 func (database *Database) GetLastFinishedQuestions(count int) (questions []int64) {
-	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM" +
-		"(SELECT q.id as id FROM questions as q" +
-		" WHERE q.status=2" +
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM"+
+		"(SELECT q.id as id FROM questions as q"+
+		" WHERE q.status=2"+
 		" ORDER BY q.id DESC LIMIT %d) ORDER BY id ASC", count))
 
 	if err != nil {
@@ -804,7 +800,8 @@ func (database *Database) GetDatabaseVersion() (version string) {
 			log.Fatal(err.Error())
 		}
 	} else {
-		version = minimalVersion
+		// that means it's a new clean database
+		version = latestVersion
 	}
 
 	return
@@ -853,9 +850,9 @@ func (database *Database) BanUser(userId int64) {
 }
 
 func (database *Database) GetLastPublishedQuestions(count int64) (questions []int64) {
-	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM" +
-		"(SELECT q.id as id FROM questions as q" +
-		" WHERE q.status=1 OR q.status=2" +
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM"+
+		"(SELECT q.id as id FROM questions as q"+
+		" WHERE q.status=1 OR q.status=2"+
 		" ORDER BY q.id DESC LIMIT %d) ORDER BY id ASC", count))
 
 	if err != nil {
@@ -904,9 +901,9 @@ func (database *Database) GetAuthor(questionId int64) (author int64, findErr err
 }
 
 func (database *Database) GetUserLastQuestions(userId int64, count int) (questions []int64) {
-	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM" +
-		"(SELECT q.id as id FROM questions as q" +
-		" WHERE q.author=%d AND (q.status=1 OR q.status=2)" +
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM"+
+		"(SELECT q.id as id FROM questions as q"+
+		" WHERE q.author=%d AND (q.status=1 OR q.status=2)"+
 		" ORDER BY q.id DESC LIMIT %d) ORDER BY id ASC", userId, count))
 
 	if err != nil {
@@ -927,9 +924,9 @@ func (database *Database) GetUserLastQuestions(userId int64, count int) (questio
 }
 
 func (database *Database) GetUserLastFinishedQuestions(userId int64, count int) (questions []int64) {
-	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM" +
-		"(SELECT q.id as id FROM questions as q" +
-		" WHERE q.author=%d AND q.status=2" +
+	rows, err := database.conn.Query(fmt.Sprintf("SELECT id FROM"+
+		"(SELECT q.id as id FROM questions as q"+
+		" WHERE q.author=%d AND q.status=2"+
 		" ORDER BY q.id DESC LIMIT %d) ORDER BY id ASC", userId, count))
 
 	if err != nil {
@@ -948,4 +945,3 @@ func (database *Database) GetUserLastFinishedQuestions(userId int64, count int) 
 
 	return
 }
-

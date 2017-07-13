@@ -1,9 +1,9 @@
 package database
 
 import (
-	"testing"
 	"github.com/stretchr/testify/require"
 	"os"
+	"testing"
 )
 
 const (
@@ -314,7 +314,7 @@ func TestAnswerQuestion(t *testing.T) {
 		users := db.GetUsersAnsweringQuestionNow(questionId)
 		assert.Equal(1, len(users))
 
-		for _, user := range(users) {
+		for _, user := range users {
 			db.RemoveUserPendingQuestion(user, questionId)
 
 			assert.False(db.IsUserEditingQuestion(user))
@@ -374,7 +374,7 @@ func TestDatabaseVersion(t *testing.T) {
 
 	{
 		version := db.GetDatabaseVersion()
-		assert.Equal("1.0", version)
+		assert.Equal(latestVersion, version)
 	}
 
 	db.SetDatabaseVersion("1.2")
@@ -442,4 +442,3 @@ func TestSanitizeString(t *testing.T) {
 	variants := db.GetQuestionVariants(questionId)
 	assert.Equal(testText, variants[0])
 }
-

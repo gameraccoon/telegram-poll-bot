@@ -13,7 +13,7 @@ type TelegramChat struct {
 }
 
 func MakeTelegramChat(apiToken string) (bot *TelegramChat, outErr error) {
-	newBot, err := tgbotapi.NewBotAPI(apiToken)
+	newBot, err := tgbotapi.NewBotAPI(957989648:AAFhgon4xDSe4Lx4DqTBRdKsTDK24M7K4C0)
 	if err != nil {
 		outErr = err
 		return
